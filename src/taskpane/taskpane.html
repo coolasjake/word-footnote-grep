@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Smart Footnotes</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  </head>
+
+  <body>
+    <div id="app">
+      <header class="header">
+        <h1>Smart Footnotes</h1>
+        <p class="subtitle">Search, format, and organise footnotes</p>
+        <p id="note-counts" class="note-counts">Loading document…</p>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Footnote tools">
+        <button
+          id="tab-search"
+          class="tab active"
+          role="tab"
+          aria-selected="true"
+          aria-controls="panel-search"
+        >
+          Search &amp; Replace
+        </button>
+
+        <button
+          id="tab-commas"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-commas"
+        >
+          Italicised Commas
+        </button>
+
+        <button
+          id="tab-sources"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-sources"
+        >
+          By Source
+        </button>
+      </nav>
+
+      <main>
+        <!-- SEARCH & REPLACE -->
+        <section
+          id="panel-search"
+          class="tab-panel"
+          role="tabpanel"
+          aria-labelledby="tab-search"
+        >
+          <section class="panel">
+            <label class="field">
+              <span>Search pattern (regex)</span>
+              <input
+                id="pattern"
+                type="text"
+                placeholder="e.g. \bSmith\b|\\(\d{4}\\)"
+                spellcheck="false"
+              />
+            </label>
+
+            <label class="field">
+              <span>Replacement</span>
+              <input
+                id="replacement"
+                type="text"
+                placeholder="Use $1, $2 for capture groups"
+                spellcheck="false"
+              />
+            </label>
+
+            <fieldset class="flags">
+              <legend>Flags</legend>
+              <label>
+                <input id="flag-global" type="checkbox" checked />
+                Global (g)
+              </label>
+              <label>
+                <input id="flag-ignore-case" type="checkbox" />
+                Ignore case (i)
+              </label>
+              <label>
+                <input id="flag-multiline" type="checkbox" />
+                Multiline (m)
+              </label>
+              <label>
+                <input id="flag-dotall" type="checkbox" />
+                Dot matches newline (s)
+              </label>
+            </fieldset>
+
+            <label class="field">
+              <span>Scope</span>
+              <select id="note-kind">
+                <option value="footnote" selected>Footnotes only</option>
+                <option value="endnote">Endnotes only</option>
+                <option value="both">Footnotes and endnotes</option>
+              </select>
+            </label>
+
+            <div class="actions">
+              <button id="btn-preview" class="btn primary">
+                Preview matches
+              </button>
+              <button id="btn-replace" class="btn danger" disabled>
+                Replace all matches
+              </button>
+            </div>
+          </section>
+
+          <section id="results" class="results hidden">
+            <h2>Preview</h2>
+            <p id="summary" class="summary"></p>
+            <div id="match-list" class="match-list"></div>
+          </section>
+        </section>
+
+        <!-- ITALICISED COMMAS -->
+        <section
+          id="panel-commas"
+          class="tab-panel hidden"
+          role="tabpanel"
+          aria-labelledby="tab-commas"
+          hidden
+        >
+          <section class="panel">
+            <h2 class="panel-heading">Incorrectly Italicised Commas</h2>
+
+            <p class="panel-description">
+              Find commas in footnotes that are formatted as italic.
+            </p>
+
+            <div class="actions">
+              <button id="btn-find-commas" class="btn primary">
+                Find italicised commas
+              </button>
+
+              <button id="btn-fix-commas" class="btn danger" disabled>
+                Fix all
+              </button>
+            </div>
+          </section>
+
+          <section id="comma-results" class="results hidden">
+            <h2>Results</h2>
+            <p id="comma-summary" class="summary"></p>
+            <div id="comma-list" class="comma-list"></div>
+          </section>
+        </section>
+
+        <!-- BY SOURCE -->
+        <section
+          id="panel-sources"
+          class="tab-panel hidden"
+          role="tabpanel"
+          aria-labelledby="tab-sources"
+          hidden
+        >
+          <section class="panel">
+            <h2 class="panel-heading">Footnotes by Source</h2>
+
+            <p class="panel-description">
+              Split multi-source footnotes and group matching sources.
+            </p>
+
+            <fieldset class="view-options">
+              <legend>View</legend>
+
+              <label>
+                <input
+                  id="source-view-grouped"
+                  type="radio"
+                  name="source-view"
+                  value="grouped"
+                  checked
+                />
+                Group by source
+              </label>
+
+              <label>
+                <input
+                  id="source-view-flat"
+                  type="radio"
+                  name="source-view"
+                  value="flat"
+                />
+                Show all sources
+              </label>
+            </fieldset>
+
+            <div class="actions">
+              <button id="btn-refresh-sources" class="btn primary">
+                Refresh
+              </button>
+            </div>
+          </section>
+
+          <section id="source-results" class="results hidden">
+            <p id="source-summary" class="summary"></p>
+            <div id="source-list" class="source-list"></div>
+          </section>
+        </section>
+      </main>
+
+      <section id="status" class="status" aria-live="polite"></section>
+
+      <footer class="footer">
+        <p>
+          Requires Word with API 1.5+ (footnotes/endnotes support).
+          Use <code>$1</code>, <code>$2</code> in replacements for capture groups.
+        </p>
+      </footer>
+    </div>
+  </body>
+</html>

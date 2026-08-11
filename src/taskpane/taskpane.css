@@ -1,0 +1,491 @@
+:root {
+  color-scheme: light dark;
+
+  --bg: #ffffff;
+  --surface: #f5f5f5;
+  --border: #d1d1d1;
+  --text: #242424;
+  --muted: #616161;
+
+  --accent: #0078d4;
+  --accent-hover: #106ebe;
+
+  --danger: #c50f1f;
+  --danger-hover: #a30d1a;
+
+  --success: #107c10;
+
+  --mono-bg: #fafafa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1f1f1f;
+    --surface: #2d2d2d;
+    --border: #444;
+    --text: #f3f3f3;
+    --muted: #b3b3b3;
+    --mono-bg: #141414;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text);
+  background: var(--bg);
+}
+
+#app {
+  padding: 16px;
+  max-width: 420px;
+}
+
+.header h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.subtitle {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.note-counts {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+
+/* --------------------------------------------------------------------------
+   TABS
+-------------------------------------------------------------------------- */
+
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+}
+
+.tab {
+  min-width: 0;
+  padding: 7px 5px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.tab.active {
+  color: var(--text);
+  background: var(--bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.tab:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.tab-panel.hidden {
+  display: none;
+}
+
+
+/* --------------------------------------------------------------------------
+   PANELS
+-------------------------------------------------------------------------- */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.panel-heading {
+  margin: 0;
+  font-size: 16px;
+}
+
+.panel-description {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+
+/* --------------------------------------------------------------------------
+   FIELDS
+-------------------------------------------------------------------------- */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.field span {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+input[type="text"],
+select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+}
+
+input[type="text"]:focus,
+select:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+
+/* --------------------------------------------------------------------------
+   FLAGS / OPTIONS
+-------------------------------------------------------------------------- */
+
+.flags,
+.view-options {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.flags legend,
+.view-options legend {
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.flags label,
+.view-options label {
+  display: block;
+  margin: 5px 0;
+  font-size: 13px;
+}
+
+
+/* --------------------------------------------------------------------------
+   BUTTONS
+-------------------------------------------------------------------------- */
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+
+/* --------------------------------------------------------------------------
+   STATUS
+-------------------------------------------------------------------------- */
+
+.status {
+  min-height: 20px;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+.status.error {
+  color: var(--danger);
+}
+
+.status.success {
+  color: var(--success);
+}
+
+.status.info {
+  color: var(--muted);
+}
+
+
+/* --------------------------------------------------------------------------
+   RESULTS
+-------------------------------------------------------------------------- */
+
+.results {
+  margin-top: 8px;
+}
+
+.results.hidden {
+  display: none;
+}
+
+.results h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.summary {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+
+/* --------------------------------------------------------------------------
+   EXISTING MATCH RESULTS
+-------------------------------------------------------------------------- */
+
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.match-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--mono-bg);
+}
+
+.match-card h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.diff {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-label {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.diff-before {
+  color: var(--danger);
+}
+
+.diff-after {
+  color: var(--success);
+}
+
+
+/* --------------------------------------------------------------------------
+   ITALICISED COMMAS
+-------------------------------------------------------------------------- */
+
+.comma-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.comma-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--mono-bg);
+}
+
+.comma-card h3 {
+  margin: 0 0 7px;
+  font-size: 13px;
+}
+
+.comma-context {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+
+.italic-comma {
+  color: var(--danger);
+  font-weight: 700;
+  background: rgba(197, 15, 31, 0.1);
+  border-radius: 2px;
+  padding: 1px 2px;
+}
+
+
+/* --------------------------------------------------------------------------
+   SOURCE RESULTS
+-------------------------------------------------------------------------- */
+
+.source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 420px;
+  overflow-y: auto;
+}
+
+.source-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--mono-bg);
+}
+
+.source-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.source-header h3 {
+  margin: 0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.source-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.source-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.source-reference {
+  display: inline-block;
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+}
+
+.flat-source-card {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--mono-bg);
+}
+
+.flat-reference {
+  flex-shrink: 0;
+  min-width: 36px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.flat-source {
+  min-width: 0;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.empty-state {
+  padding: 18px 10px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.success-state {
+  color: var(--success);
+}
+
+
+/* --------------------------------------------------------------------------
+   FOOTER
+-------------------------------------------------------------------------- */
+
+.footer {
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.footer code {
+  font-family: Consolas, monospace;
+}
