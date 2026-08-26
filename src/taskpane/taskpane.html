@@ -11,8 +11,8 @@
   <body>
     <div id="app">
       <header class="header">
-        <h1>Smart Footnotes</h1>
-        <p class="subtitle">Search, format, and organise footnotes</p>
+        <!-- <h1>Smart Footnotes</h1>
+        <p class="subtitle">Search, format, and organise footnotes</p> -->
         <p id="note-counts" class="note-counts">Loading document…</p>
       </header>
 
@@ -43,6 +43,7 @@
           role="tab"
           aria-selected="false"
           aria-controls="panel-style-problems"
+          hidden
         >
           Style Problems
         </button>
@@ -143,11 +144,11 @@
       <section id="status" class="status" aria-live="polite"></section>
 
       <footer class="footer">
-        <p>
+        <!-- <p>
           Requires Word with API 1.5+ (footnotes/endnotes support).
           Word's footnote reference mark is commonly returned as <code>\u0002</code>.
           Use <code>$1</code>, <code>$2</code> in replacements for capture groups.
-        </p>
+        </p> -->
       </footer>
     </div>
   </body>

@@ -72,7 +72,7 @@ body {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 2px;
   margin-bottom: 12px;
   padding: 3px;
@@ -390,8 +390,6 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 420px;
-  overflow-y: auto;
 }
 
 .source-card {

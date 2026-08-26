@@ -717,30 +717,17 @@ function renderSources(
     : [];
   const errorCount = groups.filter((group) => group.error).length;
   const warningCount = groups.filter((group) => group.warning).length;
-  const directReferenceCount = references.filter(
-    (reference) => reference.directReferenceTarget
-  ).length;
-
-  const sourceCount = new Set(
-    references.map((reference) => reference.normalizedSource)
+  const footnoteCount = new Set(
+    references.map((reference) => reference.noteIndex)
   ).size;
 
-  summary.textContent =
-    `${references.length} source reference${
-      references.length === 1 ? "" : "s"
-    } from ` +
-    `${sourceCount} unique source${
-      sourceCount === 1 ? "" : "s"
-    }` +
-    (mode === "grouped" && (errorCount > 0 || warningCount > 0)
-      ? `; ${errorCount} error${errorCount === 1 ? "" : "s"}, ` +
-        `${warningCount} warning${warningCount === 1 ? "" : "s"}`
-      : "") +
-    (mode === "grouped" && directReferenceCount > 0
-      ? `; ${directReferenceCount} direct reference${
-          directReferenceCount === 1 ? "" : "s"
-        }`
-      : "");
+  summary.textContent = mode === "grouped"
+    ? `${groups.length} source${groups.length === 1 ? "" : "s"}, ` +
+      `${footnoteCount} footnote${footnoteCount === 1 ? "" : "s"}, ` +
+      `${errorCount} error${errorCount === 1 ? "" : "s"}, ` +
+      `${warningCount} warning${warningCount === 1 ? "" : "s"}`
+    : `${references.length} source${references.length === 1 ? "" : "s"}, ` +
+      `${footnoteCount} footnote${footnoteCount === 1 ? "" : "s"}`;
 
   if (mode === "grouped") {
     renderSourceGroups(groups, listId, getGroupSort());
