@@ -504,6 +504,23 @@ async function handleFixItalicisedCommas(): Promise<void> {
    SOURCES
 -------------------------------------------------------------------------- */
 
+type GroupSort =
+  | "alphabetical"
+  | "footnote"
+  | "references"
+  | "errors";
+
+
+function getGroupSort(): GroupSort {
+  const value = ($("group-sort") as HTMLSelectElement).value;
+
+  return value === "alphabetical" ||
+    value === "references" ||
+    value === "errors"
+    ? value
+    : "footnote";
+}
+
 function normalizeSourceForGrouping(source: string): string {
   return source
     .trim()
@@ -515,7 +532,8 @@ function normalizeSourceForGrouping(source: string): string {
 
 function renderSourceGroups(
   groups: SourceGroup[],
-  listId: string
+  listId: string,
+  sort: GroupSort
 ): void {
   const list = $(listId);
 
@@ -528,7 +546,42 @@ function renderSourceGroups(
     return;
   }
 
-  list.innerHTML = groups
+  const orderedGroups = [...groups].sort((a, b) => {
+    if (sort === "errors") {
+      const problemOrder =
+        (Number(Boolean(b.error)) * 2 + Number(Boolean(b.warning))) -
+        (Number(Boolean(a.error)) * 2 + Number(Boolean(a.warning)));
+
+      if (problemOrder !== 0) {
+        return problemOrder;
+      }
+    }
+
+    if (sort === "alphabetical") {
+      const alphabeticalOrder = a.source.trimStart().localeCompare(
+        b.source.trimStart(),
+        undefined,
+        { sensitivity: "base" }
+      );
+
+      if (alphabeticalOrder !== 0) {
+        return alphabeticalOrder;
+      }
+    }
+
+    if (sort === "references") {
+      const referenceOrder =
+        b.references.length - a.references.length;
+
+      if (referenceOrder !== 0) {
+        return referenceOrder;
+      }
+    }
+
+    return a.references[0].noteIndex - b.references[0].noteIndex;
+  });
+
+  list.innerHTML = orderedGroups
     .map(
       (group) => `
         <article class="source-card">
@@ -665,7 +718,7 @@ function renderSources(
       : "");
 
   if (mode === "grouped") {
-    renderSourceGroups(groups, listId);
+    renderSourceGroups(groups, listId, getGroupSort());
   } else {
     renderFlatSources(references, listId);
   }
@@ -884,6 +937,18 @@ function initializeUI(): void {
 
   $("btn-refresh-group-sources").addEventListener("click", () => {
     void handleRefreshSources("grouped");
+  });
+
+  $("group-sort").addEventListener("change", () => {
+    if (lastSourceReferences.length > 0) {
+      renderSources(
+        lastSourceReferences,
+        "grouped",
+        "group-sources-results",
+        "group-sources-summary",
+        "group-sources-list"
+      );
+    }
   });
 
 
