@@ -673,6 +673,14 @@ function isAutomaticReference(referenceText: string): boolean {
 }
 
 
+function splitSources(text: string): string[] {
+  return text
+    .split(/;(?=\s*(?:[^\d\s]|$))/)
+    .map((source) => source.trim())
+    .filter((source) => source.length > 0);
+}
+
+
 function readDirectReference(source: string): {
   target: string;
   prefix: string;
@@ -737,13 +745,9 @@ export async function getFootnoteSources(): Promise<
      * Empty pieces are ignored so that accidental
      * double-semicolons don't produce empty entries.
      */
-    const sources = removeLeadingNoteMarkers(
-      note.text,
-      note.referenceText
-    )
-      .split(";")
-      .map((source) => source.trim())
-      .filter((source) => source.length > 0);
+    const sources = splitSources(
+      removeLeadingNoteMarkers(note.text, note.referenceText)
+    );
 
     let reference: string;
 
