@@ -110,19 +110,21 @@ function displayNoteText(
    TAB HANDLING
 -------------------------------------------------------------------------- */
 
-function switchTab(tabName: "search" | "commas" | "sources"): void {
+function switchTab(
+  tabName: "all-footnotes" | "group-sources" | "style-problems"
+): void {
   const tabs = {
-    search: {
-      button: $("tab-search"),
-      panel: $("panel-search"),
+    "all-footnotes": {
+      button: $("tab-all-footnotes"),
+      panel: $("panel-all-footnotes"),
     },
-    commas: {
-      button: $("tab-commas"),
-      panel: $("panel-commas"),
+    "group-sources": {
+      button: $("tab-group-sources"),
+      panel: $("panel-group-sources"),
     },
-    sources: {
-      button: $("tab-sources"),
-      panel: $("panel-sources"),
+    "style-problems": {
+      button: $("tab-style-problems"),
+      panel: $("panel-style-problems"),
     },
   };
 
@@ -424,17 +426,11 @@ async function handleFixItalicisedCommas(): Promise<void> {
    SOURCES
 -------------------------------------------------------------------------- */
 
-function getSelectedSourceView(): "grouped" | "flat" {
-  return (
-    $("source-view-grouped") as HTMLInputElement
-  ).checked
-    ? "grouped"
-    : "flat";
-}
-
-
-function renderSourceGroups(groups: SourceGroup[]): void {
-  const list = $("source-list");
+function renderSourceGroups(
+  groups: SourceGroup[],
+  listId: string
+): void {
+  const list = $(listId);
 
   if (groups.length === 0) {
     list.innerHTML = `
@@ -476,9 +472,10 @@ function renderSourceGroups(groups: SourceGroup[]): void {
 
 
 function renderFlatSources(
-  references: SourceReference[]
+  references: SourceReference[],
+  listId: string
 ): void {
-  const list = $("source-list");
+  const list = $(listId);
 
   if (references.length === 0) {
     list.innerHTML = `
@@ -508,10 +505,14 @@ function renderFlatSources(
 
 
 function renderSources(
-  references: SourceReference[]
+  references: SourceReference[],
+  mode: "grouped" | "flat",
+  resultsId: string,
+  summaryId: string,
+  listId: string
 ): void {
-  const results = $("source-results");
-  const summary = $("source-summary");
+  const results = $(resultsId);
+  const summary = $(summaryId);
 
   results.classList.remove("hidden");
 
@@ -529,11 +530,11 @@ function renderSources(
       sourceCount === 1 ? "" : "s"
     }`;
 
-  if (getSelectedSourceView() === "grouped") {
+  if (mode === "grouped") {
     const groups = buildSourceGroups(references);
-    renderSourceGroups(groups);
+    renderSourceGroups(groups, listId);
   } else {
-    renderFlatSources(references);
+    renderFlatSources(references, listId);
   }
 }
 
@@ -565,9 +566,13 @@ function buildSourceGroups(
 }
 
 
-async function handleRefreshSources(): Promise<void> {
-  const refreshButton =
-    $("btn-refresh-sources") as HTMLButtonElement;
+async function handleRefreshSources(
+  mode: "grouped" | "flat"
+): Promise<void> {
+  const buttonId = mode === "grouped"
+    ? "btn-refresh-group-sources"
+    : "btn-refresh-all-footnotes";
+  const refreshButton = $(buttonId) as HTMLButtonElement;
 
   refreshButton.disabled = true;
   setStatus("Reading footnotes and grouping sources…", "info");
@@ -575,7 +580,25 @@ async function handleRefreshSources(): Promise<void> {
   try {
     const references = await getFootnoteSources();
 
-    renderSources(references);
+    const panelIds = mode === "grouped"
+      ? {
+          results: "group-sources-results",
+          summary: "group-sources-summary",
+          list: "group-sources-list",
+        }
+      : {
+          results: "all-footnotes-results",
+          summary: "all-footnotes-summary",
+          list: "all-footnotes-list",
+        };
+
+    renderSources(
+      references,
+      mode,
+      panelIds.results,
+      panelIds.summary,
+      panelIds.list
+    );
 
     const uniqueSources = new Set(
       references.map((reference) => reference.normalizedSource)
@@ -606,47 +629,16 @@ async function handleRefreshSources(): Promise<void> {
 
 function initializeUI(): void {
   /* Tabs */
-  $("tab-search").addEventListener("click", () => {
-    switchTab("search");
+  $("tab-all-footnotes").addEventListener("click", () => {
+    switchTab("all-footnotes");
   });
 
-  $("tab-commas").addEventListener("click", () => {
-    switchTab("commas");
+  $("tab-group-sources").addEventListener("click", () => {
+    switchTab("group-sources");
   });
 
-  $("tab-sources").addEventListener("click", () => {
-    switchTab("sources");
-  });
-
-
-  /* Existing regex functionality */
-  $("btn-preview").addEventListener("click", () => {
-    void handlePreview();
-  });
-
-  $("btn-replace").addEventListener("click", () => {
-    void handleReplace();
-  });
-
-
-  [
-    "pattern",
-    "replacement",
-    "note-kind",
-    "flag-global",
-    "flag-ignore-case",
-    "flag-multiline",
-    "flag-dotall",
-  ].forEach((id) => {
-    $(id).addEventListener("input", () => {
-      ($("btn-replace") as HTMLButtonElement).disabled = true;
-      lastPreview = [];
-    });
-
-    $(id).addEventListener("change", () => {
-      ($("btn-replace") as HTMLButtonElement).disabled = true;
-      lastPreview = [];
-    });
+  $("tab-style-problems").addEventListener("click", () => {
+    switchTab("style-problems");
   });
 
 
@@ -660,21 +652,13 @@ function initializeUI(): void {
   });
 
 
-  /* Sources */
-  $("btn-refresh-sources").addEventListener("click", () => {
-    void handleRefreshSources();
+  /* Source views */
+  $("btn-refresh-all-footnotes").addEventListener("click", () => {
+    void handleRefreshSources("flat");
   });
 
-  $("source-view-grouped").addEventListener("change", () => {
-    if (lastSourceReferences.length > 0) {
-      renderSources(lastSourceReferences);
-    }
-  });
-
-  $("source-view-flat").addEventListener("change", () => {
-    if (lastSourceReferences.length > 0) {
-      renderSources(lastSourceReferences);
-    }
+  $("btn-refresh-group-sources").addEventListener("click", () => {
+    void handleRefreshSources("grouped");
   });
 
 
