@@ -81,6 +81,19 @@ function escapeHtml(text: string): string {
 }
 
 
+function showControlCharacters(text: string): string {
+  return Array.from(text, (character) => {
+    const codePoint = character.codePointAt(0) ?? 0;
+
+    if (codePoint < 0x20 || codePoint === 0x7f) {
+      return `\\u${codePoint.toString(16).padStart(4, "0")}`;
+    }
+
+    return character;
+  }).join("");
+}
+
+
 /* --------------------------------------------------------------------------
    TAB HANDLING
 -------------------------------------------------------------------------- */
@@ -153,12 +166,12 @@ function renderPreview(
 
           <span class="diff-label">Before</span>
           <div class="diff diff-before">
-            ${escapeHtml(m.originalText)}
+            ${escapeHtml(showControlCharacters(m.originalText))}
           </div>
 
           <span class="diff-label">After</span>
           <div class="diff diff-after">
-            ${escapeHtml(m.newText)}
+            ${escapeHtml(showControlCharacters(m.newText))}
           </div>
         </article>
       `
