@@ -27,6 +27,7 @@ export interface ItalicisedComma {
 export interface SourceReference {
   noteIndex: number;
   sourceIndex: number;
+  occurrence: number;
   reference: string;
   source: string;
   normalizedSource: string;
@@ -36,7 +37,7 @@ export interface SourceReference {
 export interface SourceGroup {
   source: string;
   normalizedSource: string;
-  references: string[];
+  references: SourceReference[];
 }
 
 
@@ -149,6 +150,47 @@ export async function loadAllNotes(
   return Word.run(async (context) =>
     loadNotes(context, kind)
   );
+}
+
+
+export async function navigateToNote(
+  kind: "footnote" | "endnote",
+  noteIndex: number,
+  searchText: string,
+  occurrence = 1
+): Promise<void> {
+  await Word.run(async (context) => {
+    const collection = kind === "footnote"
+      ? context.document.body.footnotes
+      : context.document.body.endnotes;
+
+    collection.load("items");
+    await context.sync();
+
+    const note = collection.items[noteIndex - 1];
+
+    if (!note) {
+      throw new Error(`Could not find ${kind} ${noteIndex}.`);
+    }
+
+    const matches = note.body.search(searchText, {
+      matchCase: true,
+      matchWholeWord: false,
+    });
+    matches.load("items");
+    await context.sync();
+
+    const target = matches.items[occurrence - 1];
+
+    if (!target) {
+      throw new Error(
+        `Could not find the selected text in ${kind} ${noteIndex}.`
+      );
+    }
+
+    target.select();
+    await context.sync();
+  });
 }
 
 
@@ -434,7 +476,8 @@ export async function findItalicisedCommas(): Promise<
 
         result.push({
           noteIndex: item.noteIndex,
-          occurrence,
+          occurrence:
+            item.ranges.items.indexOf(range) + 1,
           contextBefore: contextText.before,
           contextAfter: contextText.after,
         });
@@ -620,7 +663,11 @@ export async function getFootnoteSources(): Promise<
       reference = String(automaticNumber);
     }
 
+    const occurrences = new Map<string, number>();
+
     sources.forEach((source, index) => {
+      const occurrence = (occurrences.get(source) ?? 0) + 1;
+      occurrences.set(source, occurrence);
       const sourceReference =
         sources.length > 1
           ? `${reference}(${index + 1})`
@@ -629,6 +676,7 @@ export async function getFootnoteSources(): Promise<
       references.push({
         noteIndex: note.index,
         sourceIndex: index + 1,
+        occurrence,
         reference: sourceReference,
         source,
         normalizedSource:

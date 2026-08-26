@@ -12,6 +12,7 @@ import {
   fixItalicisedCommas,
   getNoteCounts,
   getFootnoteSources,
+  navigateToNote,
   previewFootnoteGrep,
   ItalicisedComma,
   SourceGroup,
@@ -52,6 +53,75 @@ function setStatus(
 
   status.textContent = message;
   status.className = `status ${kind}`;
+}
+
+
+async function handleNavigation(element: HTMLElement): Promise<void> {
+  const kind = element.dataset.noteKind;
+  const noteIndex = Number(element.dataset.noteIndex);
+  const searchText = element.dataset.searchText;
+  const occurrence = Number(element.dataset.occurrence ?? "1");
+
+  if (
+    (kind !== "footnote" && kind !== "endnote") ||
+    !Number.isInteger(noteIndex) ||
+    noteIndex < 1 ||
+    !searchText
+  ) {
+    return;
+  }
+
+  setStatus("Opening document location…", "info");
+
+  try {
+    await navigateToNote(
+      kind,
+      noteIndex,
+      searchText,
+      Number.isInteger(occurrence) && occurrence > 0
+        ? occurrence
+        : 1
+    );
+    setStatus("Document location selected.", "success");
+  } catch (err) {
+    setStatus(
+      err instanceof Error ? err.message : String(err),
+      "error"
+    );
+  }
+}
+
+
+function initializeNavigation(): void {
+  $("app").addEventListener("click", (event) => {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    const navigable = target.closest<HTMLElement>(".navigable");
+
+    if (navigable) {
+      void handleNavigation(navigable);
+    }
+  });
+
+  $("app").addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    const target = event.target;
+
+    if (!(target instanceof HTMLElement) ||
+        !target.classList.contains("navigable")) {
+      return;
+    }
+
+    event.preventDefault();
+    void handleNavigation(target);
+  });
 }
 
 
@@ -335,7 +405,15 @@ function renderItalicisedCommas(
   list.innerHTML = commas
     .map(
       (comma) => `
-        <article class="comma-card">
+        <article
+          class="comma-card navigable"
+          data-note-kind="footnote"
+          data-note-index="${comma.noteIndex}"
+          data-search-text=","
+          data-occurrence="${comma.occurrence}"
+          tabindex="0"
+          role="button"
+        >
           <h3>Footnote ${comma.noteIndex}</h3>
 
           <div class="comma-context">
@@ -446,7 +524,15 @@ function renderSourceGroups(
       (group) => `
         <article class="source-card">
           <div class="source-header">
-            <h3>${escapeHtml(group.source)}</h3>
+            <h3
+              class="navigable"
+              data-note-kind="footnote"
+              data-note-index="${group.references[0].noteIndex}"
+              data-search-text="${escapeHtml(group.source)}"
+              data-occurrence="${group.references[0].occurrence}"
+              tabindex="0"
+              role="button"
+            >${escapeHtml(group.source)}</h3>
             <span class="source-count">
               ${group.references.length}
               reference${group.references.length === 1 ? "" : "s"}
@@ -457,8 +543,16 @@ function renderSourceGroups(
             ${group.references
               .map(
                 (reference) => `
-                  <span class="source-reference">
-                    ${escapeHtml(reference)}
+                  <span
+                    class="source-reference navigable"
+                    data-note-kind="footnote"
+                    data-note-index="${reference.noteIndex}"
+                    data-search-text="${escapeHtml(reference.source)}"
+                    data-occurrence="${reference.occurrence}"
+                    tabindex="0"
+                    role="button"
+                  >
+                    ${escapeHtml(reference.reference)}
                   </span>
                 `
               )
@@ -489,7 +583,15 @@ function renderFlatSources(
   list.innerHTML = references
     .map(
       (source) => `
-        <article class="flat-source-card">
+        <article
+          class="flat-source-card navigable"
+          data-note-kind="footnote"
+          data-note-index="${source.noteIndex}"
+          data-search-text="${escapeHtml(source.source)}"
+          data-occurrence="${source.occurrence}"
+          tabindex="0"
+          role="button"
+        >
           <span class="flat-reference">
             ${escapeHtml(source.reference)}
           </span>
@@ -548,12 +650,12 @@ function buildSourceGroups(
     const existing = groups.get(reference.normalizedSource);
 
     if (existing) {
-      existing.references.push(reference.reference);
+      existing.references.push(reference);
     } else {
       groups.set(reference.normalizedSource, {
         source: reference.source,
         normalizedSource: reference.normalizedSource,
-        references: [reference.reference],
+        references: [reference],
       });
     }
   }
@@ -628,6 +730,8 @@ async function handleRefreshSources(
 -------------------------------------------------------------------------- */
 
 function initializeUI(): void {
+  initializeNavigation();
+
   /* Tabs */
   $("tab-all-footnotes").addEventListener("click", () => {
     switchTab("all-footnotes");
