@@ -47,7 +47,8 @@ export interface SourceGroup {
 
 async function loadNotes(
   context: Word.RequestContext,
-  kind: NoteKind
+  kind: NoteKind,
+  includeReferenceMetadata = false
 ): Promise<LoadedNote[]> {
   const notes: LoadedNote[] = [];
 
@@ -66,29 +67,43 @@ async function loadNotes(
       const reference = footnotes.items[i].reference;
 
       range.load("text");
-      reference.load("text");
+      if (includeReferenceMetadata) {
+        reference.load("text");
+      }
       rangeObjects.push(range);
-      referenceObjects.push(reference);
-      bodyObjects.push(footnotes.items[i].body);
+      if (includeReferenceMetadata) {
+        referenceObjects.push(reference);
+        bodyObjects.push(footnotes.items[i].body);
+      }
     }
 
     await context.sync();
 
-    const bodyOoxmlObjects = bodyObjects.map((body) =>
-      body.getOoxml()
-    );
-    await context.sync();
+    const bodyOoxmlObjects = includeReferenceMetadata
+      ? bodyObjects.map((body, index) =>
+          isAutomaticReference(referenceObjects[index].text)
+            ? undefined
+            : body.getOoxml()
+        )
+      : [];
+
+    if (includeReferenceMetadata) {
+      await context.sync();
+    }
 
     for (let i = 0; i < footnotes.items.length; i++) {
-      const customReferenceText = readCustomReference(
-        bodyOoxmlObjects[i].value
-      );
+      const bodyOoxml = bodyOoxmlObjects[i];
+      const customReferenceText = bodyOoxml
+        ? readCustomReference(bodyOoxml.value)
+        : undefined;
 
       notes.push({
         index: i + 1,
         kind: "footnote",
         text: rangeObjects[i].text,
-        referenceText: referenceObjects[i].text,
+        referenceText: includeReferenceMetadata
+          ? referenceObjects[i].text
+          : "",
         isCustomReference: Boolean(customReferenceText),
         customReferenceText,
       });
@@ -111,29 +126,43 @@ async function loadNotes(
       const reference = endnotes.items[i].reference;
 
       range.load("text");
-      reference.load("text");
+      if (includeReferenceMetadata) {
+        reference.load("text");
+      }
       rangeObjects.push(range);
-      referenceObjects.push(reference);
-      bodyObjects.push(endnotes.items[i].body);
+      if (includeReferenceMetadata) {
+        referenceObjects.push(reference);
+        bodyObjects.push(endnotes.items[i].body);
+      }
     }
 
     await context.sync();
 
-    const bodyOoxmlObjects = bodyObjects.map((body) =>
-      body.getOoxml()
-    );
-    await context.sync();
+    const bodyOoxmlObjects = includeReferenceMetadata
+      ? bodyObjects.map((body, index) =>
+          isAutomaticReference(referenceObjects[index].text)
+            ? undefined
+            : body.getOoxml()
+        )
+      : [];
+
+    if (includeReferenceMetadata) {
+      await context.sync();
+    }
 
     for (let i = 0; i < endnotes.items.length; i++) {
-      const customReferenceText = readCustomReference(
-        bodyOoxmlObjects[i].value
-      );
+      const bodyOoxml = bodyOoxmlObjects[i];
+      const customReferenceText = bodyOoxml
+        ? readCustomReference(bodyOoxml.value)
+        : undefined;
 
       notes.push({
         index: i + 1,
         kind: "endnote",
         text: rangeObjects[i].text,
-        referenceText: referenceObjects[i].text,
+        referenceText: includeReferenceMetadata
+          ? referenceObjects[i].text
+          : "",
         isCustomReference: Boolean(customReferenceText),
         customReferenceText,
       });
@@ -145,10 +174,11 @@ async function loadNotes(
 
 
 export async function loadAllNotes(
-  kind: NoteKind
+  kind: NoteKind,
+  includeReferenceMetadata = false
 ): Promise<LoadedNote[]> {
   return Word.run(async (context) =>
-    loadNotes(context, kind)
+    loadNotes(context, kind, includeReferenceMetadata)
   );
 }
 
@@ -635,7 +665,7 @@ function isAutomaticReference(referenceText: string): boolean {
 export async function getFootnoteSources(): Promise<
   SourceReference[]
 > {
-  const notes = await loadAllNotes("footnote");
+  const notes = await loadAllNotes("footnote", true);
   const references: SourceReference[] = [];
   let automaticNumber = 0;
 
