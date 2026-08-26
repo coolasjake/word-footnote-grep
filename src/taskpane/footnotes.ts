@@ -35,6 +35,7 @@ export interface SourceReference {
   directReferenceTarget?: string;
   directReferenceTargetIndex?: number;
   directReferencePrefix?: string;
+  shortNameDeclaration?: string;
   normalizedSource: string;
 }
 
@@ -729,6 +730,15 @@ function readDirectReference(source: string): {
 }
 
 
+function readShortNameDeclaration(source: string): string | undefined {
+  const match = source.match(
+    /\(\s*['"\u2018\u201C]\s*(.*?)\s*['"\u2019\u201D]\s*\)\s*[.!?;:]?$/
+  );
+
+  return match?.[1].trim() || undefined;
+}
+
+
 export async function getFootnoteSources(): Promise<
   SourceReference[]
 > {
@@ -783,6 +793,7 @@ export async function getFootnoteSources(): Promise<
         sourceCount: sources.length,
         directReferenceTarget: directReference?.target,
         directReferencePrefix: directReference?.prefix,
+        shortNameDeclaration: readShortNameDeclaration(source),
         normalizedSource:
           normalizeSource(source),
       };

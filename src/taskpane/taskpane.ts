@@ -530,6 +530,31 @@ function normalizeSourceForGrouping(source: string): string {
     .toLocaleLowerCase();
 }
 
+function normalizeShortName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+}
+
+function findShortNameDeclaration(
+  source: string,
+  declarations: Map<string, SourceReference>
+): SourceReference | undefined {
+  const normalizedSource = normalizeShortName(source);
+
+  for (const [name, declaration] of declarations) {
+    if (
+      normalizedSource === name ||
+      normalizedSource.startsWith(`${name} `) ||
+      normalizedSource.startsWith(`${name},`) ||
+      normalizedSource.startsWith(`${name}.`) ||
+      normalizedSource.startsWith(`${name}:`)
+    ) {
+      return declaration;
+    }
+  }
+
+  return undefined;
+}
+
 function renderSourceGroups(
   groups: SourceGroup[],
   listId: string,
@@ -733,6 +758,7 @@ function buildSourceGroups(
   const groupedReferences = new Set<SourceReference>();
   const targetedSources = new Set<string>();
   const referencesByNote = new Map<number, SourceReference[]>();
+  const shortNameDeclarations = new Map<string, SourceReference>();
 
   const sourceKey = (reference: SourceReference): string =>
     `${reference.noteIndex}:${reference.sourceIndex}`;
@@ -771,10 +797,43 @@ function buildSourceGroups(
   };
 
   for (const reference of references) {
+    const declarationName = reference.shortNameDeclaration;
+
+    if (groupedReferences.has(reference)) {
+      if (declarationName) {
+        shortNameDeclarations.set(
+          normalizeShortName(declarationName),
+          reference
+        );
+      }
+      continue;
+    }
+
     if (reference.directReferenceTarget) {
       const missing = reference.directReferenceTarget.endsWith(":missing");
 
       if (missing) {
+        const shortNameDeclaration = reference.directReferencePrefix
+          ? shortNameDeclarations.get(
+              normalizeShortName(reference.directReferencePrefix)
+            )
+          : undefined;
+
+        if (shortNameDeclaration) {
+          targetedSources.add(sourceKey(shortNameDeclaration));
+          addDirectMember(
+            shortNameDeclaration,
+            shortNameDeclaration,
+            `Mismatched short name found in footnote ${reference.directReferenceTarget.slice(0, -8)}.`
+          );
+          addDirectMember(
+            shortNameDeclaration,
+            reference,
+            `Mismatched short name found in footnote ${reference.directReferenceTarget.slice(0, -8)}.`
+          );
+          continue;
+        }
+
         groups.push({
           source: reference.fullNoteText,
           normalizedSource: reference.normalizedSource,
@@ -798,13 +857,23 @@ function buildSourceGroups(
           normalizeSourceForGrouping(candidate.source).includes(prefix)
         );
 
-        const targetSource = matchingSources.length === 1
-          ? matchingSources[0]
-          : targetSources[0];
         const matchingFailed = matchingSources.length !== 1;
-        const warning = matchingFailed
-          ? "Automatic matching failed."
+        const shortNameDeclaration = matchingFailed &&
+          reference.directReferencePrefix
+          ? shortNameDeclarations.get(
+              normalizeShortName(reference.directReferencePrefix)
+            )
           : undefined;
+        const targetSource = shortNameDeclaration ?? (
+          matchingSources.length === 1
+            ? matchingSources[0]
+            : targetSources[0]
+        );
+        const warning = shortNameDeclaration
+          ? `Mismatched short name found in footnote ${reference.directReferenceTarget}.`
+          : matchingFailed
+            ? "Automatic matching failed."
+            : undefined;
 
         if (targetSource) {
           targetedSources.add(sourceKey(targetSource));
@@ -815,9 +884,16 @@ function buildSourceGroups(
       }
     }
 
-    if (
-      groupedReferences.has(reference)
-    ) {
+    const shortNameDeclaration = declarationName
+      ? undefined
+      : findShortNameDeclaration(reference.source, shortNameDeclarations);
+
+    if (shortNameDeclaration) {
+      targetedSources.add(sourceKey(shortNameDeclaration));
+      const warning =
+        `Mismatched short name found in footnote ${reference.noteIndex}.`;
+      addDirectMember(shortNameDeclaration, shortNameDeclaration, warning);
+      addDirectMember(shortNameDeclaration, reference, warning);
       continue;
     }
 
@@ -826,6 +902,13 @@ function buildSourceGroups(
       normalizedSource: reference.normalizedSource,
       references: [reference],
     });
+
+    if (declarationName) {
+      shortNameDeclarations.set(
+        normalizeShortName(declarationName),
+        reference
+      );
+    }
   }
 
   return groups
