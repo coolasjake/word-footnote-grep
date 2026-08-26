@@ -36,6 +36,8 @@ export interface SourceReference {
   directReferenceTargetIndex?: number;
   directReferencePrefix?: string;
   shortNameDeclaration?: string;
+  isIbid?: boolean;
+  ibidTargetNoteIndex?: number;
   normalizedSource: string;
 }
 
@@ -739,12 +741,18 @@ function readShortNameDeclaration(source: string): string | undefined {
 }
 
 
+function isIbidSource(source: string): boolean {
+  return /^ibid\b/i.test(source.trim());
+}
+
+
 export async function getFootnoteSources(): Promise<
   SourceReference[]
 > {
   const notes = await loadAllNotes("footnote", true);
   const references: SourceReference[] = [];
   let automaticNumber = 0;
+  let previousFirstSource: SourceReference | undefined;
 
   const noteLabels = new Map<string, number>();
 
@@ -755,9 +763,12 @@ export async function getFootnoteSources(): Promise<
      * Empty pieces are ignored so that accidental
      * double-semicolons don't produce empty entries.
      */
-    const sources = splitSources(
+    const allSources = splitSources(
       removeLeadingNoteMarkers(note.text, note.referenceText)
     );
+    const sources = isIbidSource(allSources[0] ?? "")
+      ? allSources.slice(0, 1)
+      : allSources;
 
     let reference: string;
 
@@ -771,6 +782,7 @@ export async function getFootnoteSources(): Promise<
     noteLabels.set(reference, note.index);
 
     const occurrences = new Map<string, number>();
+    const firstSource = sources[0];
     sources.forEach((source, index) => {
       const occurrence = (occurrences.get(source) ?? 0) + 1;
       occurrences.set(source, occurrence);
@@ -779,6 +791,13 @@ export async function getFootnoteSources(): Promise<
           ? `${reference}(${index + 1})`
           : reference;
       const directReference = readDirectReference(source);
+      const isIbid = index === 0 && isIbidSource(source);
+      const ibidTargetNoteIndex = isIbid && previousFirstSource
+        ? previousFirstSource.isIbid &&
+          previousFirstSource.ibidTargetNoteIndex
+          ? previousFirstSource.ibidTargetNoteIndex
+          : previousFirstSource.noteIndex
+        : undefined;
 
       const sourceReference: SourceReference = {
         noteIndex: note.index,
@@ -794,11 +813,17 @@ export async function getFootnoteSources(): Promise<
         directReferenceTarget: directReference?.target,
         directReferencePrefix: directReference?.prefix,
         shortNameDeclaration: readShortNameDeclaration(source),
+        isIbid,
+        ibidTargetNoteIndex,
         normalizedSource:
           normalizeSource(source),
       };
 
       references.push(sourceReference);
+
+      if (index === 0 && firstSource === source) {
+        previousFirstSource = sourceReference;
+      }
     });
   }
 

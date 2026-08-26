@@ -809,6 +809,33 @@ function buildSourceGroups(
       continue;
     }
 
+    if (reference.isIbid) {
+      const target = reference.ibidTargetNoteIndex
+        ? referencesByNote.get(reference.ibidTargetNoteIndex)?.[0]
+        : undefined;
+
+      if (
+        target &&
+        !target.directReferenceTarget?.endsWith(":missing")
+      ) {
+        const warning = target.sourceCount > 1
+          ? "Warning: Ibid refers to a footnote containing multiple sources."
+          : undefined;
+        targetedSources.add(sourceKey(target));
+        addDirectMember(target, target, warning);
+        addDirectMember(target, reference, warning);
+      } else {
+        groups.push({
+          source: reference.source,
+          normalizedSource: reference.normalizedSource,
+          references: [reference],
+          warning: "Warning: Ibid follows an unresolved footnote.",
+        });
+        groupedReferences.add(reference);
+      }
+      continue;
+    }
+
     if (reference.directReferenceTarget) {
       const missing = reference.directReferenceTarget.endsWith(":missing");
 
