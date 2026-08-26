@@ -621,10 +621,15 @@ export async function getFootnoteSources(): Promise<
     }
 
     sources.forEach((source, index) => {
+      const sourceReference =
+        sources.length > 1
+          ? `${reference}(${index + 1})`
+          : reference;
+
       references.push({
         noteIndex: note.index,
         sourceIndex: index + 1,
-        reference: `${reference}(${index + 1})`,
+        reference: sourceReference,
         source,
         normalizedSource:
           normalizeSource(source),
