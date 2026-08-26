@@ -10,6 +10,9 @@ export interface LoadedNote {
   index: number;
   kind: "footnote" | "endnote";
   text: string;
+  referenceText: string;
+  isCustomReference: boolean;
+  customReferenceText?: string;
 }
 
 
@@ -54,21 +57,39 @@ async function loadNotes(
     await context.sync();
 
     const rangeObjects: Word.Range[] = [];
+    const referenceObjects: Word.Range[] = [];
+    const bodyObjects: Word.Body[] = [];
 
     for (let i = 0; i < footnotes.items.length; i++) {
       const range = footnotes.items[i].body.getRange();
+      const reference = footnotes.items[i].reference;
 
       range.load("text");
+      reference.load("text");
       rangeObjects.push(range);
+      referenceObjects.push(reference);
+      bodyObjects.push(footnotes.items[i].body);
     }
 
     await context.sync();
 
+    const bodyOoxmlObjects = bodyObjects.map((body) =>
+      body.getOoxml()
+    );
+    await context.sync();
+
     for (let i = 0; i < footnotes.items.length; i++) {
+      const customReferenceText = readCustomReference(
+        bodyOoxmlObjects[i].value
+      );
+
       notes.push({
         index: i + 1,
         kind: "footnote",
         text: rangeObjects[i].text,
+        referenceText: referenceObjects[i].text,
+        isCustomReference: Boolean(customReferenceText),
+        customReferenceText,
       });
     }
   }
@@ -81,21 +102,39 @@ async function loadNotes(
     await context.sync();
 
     const rangeObjects: Word.Range[] = [];
+    const referenceObjects: Word.Range[] = [];
+    const bodyObjects: Word.Body[] = [];
 
     for (let i = 0; i < endnotes.items.length; i++) {
       const range = endnotes.items[i].body.getRange();
+      const reference = endnotes.items[i].reference;
 
       range.load("text");
+      reference.load("text");
       rangeObjects.push(range);
+      referenceObjects.push(reference);
+      bodyObjects.push(endnotes.items[i].body);
     }
 
     await context.sync();
 
+    const bodyOoxmlObjects = bodyObjects.map((body) =>
+      body.getOoxml()
+    );
+    await context.sync();
+
     for (let i = 0; i < endnotes.items.length; i++) {
+      const customReferenceText = readCustomReference(
+        bodyOoxmlObjects[i].value
+      );
+
       notes.push({
         index: i + 1,
         kind: "endnote",
         text: rangeObjects[i].text,
+        referenceText: referenceObjects[i].text,
+        isCustomReference: Boolean(customReferenceText),
+        customReferenceText,
       });
     }
   }
@@ -509,12 +548,53 @@ function normalizeSource(source: string): string {
 }
 
 
+function removeLeadingNoteMarkers(
+  text: string,
+  referenceText: string
+): string {
+  if (isAutomaticReference(referenceText)) {
+    return text.replace(/^[\u0000-\u001f\u007f]+/, "");
+  }
+
+  return text.replace(/^\(\s*/, "");
+}
+
+
+function readCustomReference(xml: string): string | undefined {
+  const marker = xml.match(
+    /<w:footnoteRef\b[^>]*w:customMarkFollows="1"[^>]*\/?\s*>/
+  );
+
+  if (!marker) {
+    return undefined;
+  }
+
+  const followingXml = xml.slice(
+    (marker.index ?? 0) + marker[0].length
+  );
+  const symbol = followingXml.match(
+    /<w:sym\b[^>]*w:char="([0-9A-Fa-f]{4,6})"[^>]*\/?\s*>/
+  );
+
+  if (!symbol) {
+    return "*";
+  }
+
+  return String.fromCodePoint(parseInt(symbol[1], 16));
+}
+
+
+function isAutomaticReference(referenceText: string): boolean {
+  return referenceText.trimStart().charCodeAt(0) === 0x0002;
+}
+
+
 export async function getFootnoteSources(): Promise<
   SourceReference[]
 > {
   const notes = await loadAllNotes("footnote");
-
   const references: SourceReference[] = [];
+  let automaticNumber = 0;
 
   for (const note of notes) {
     /*
@@ -523,16 +603,28 @@ export async function getFootnoteSources(): Promise<
      * Empty pieces are ignored so that accidental
      * double-semicolons don't produce empty entries.
      */
-    const sources = note.text
+    const sources = removeLeadingNoteMarkers(
+      note.text,
+      note.referenceText
+    )
       .split(";")
       .map((source) => source.trim())
       .filter((source) => source.length > 0);
+
+    let reference: string;
+
+    if (!isAutomaticReference(note.referenceText)) {
+      reference = note.customReferenceText || "*";
+    } else {
+      automaticNumber++;
+      reference = String(automaticNumber);
+    }
 
     sources.forEach((source, index) => {
       references.push({
         noteIndex: note.index,
         sourceIndex: index + 1,
-        reference: `${note.index}(${index + 1})`,
+        reference: `${reference}(${index + 1})`,
         source,
         normalizedSource:
           normalizeSource(source),

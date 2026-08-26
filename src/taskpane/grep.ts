@@ -19,6 +19,7 @@ export interface GrepMatch {
   noteKind: "footnote" | "endnote";
   originalText: string;
   newText: string;
+  referenceText?: string;
   matchCount: number;
 }
 
@@ -55,7 +56,7 @@ export function applyGrep(text: string, pattern: RegExp, replacement: string): {
   return { newText, matchCount };
 }
 
-export function previewGrep(notes: Array<{ index: number; kind: "footnote" | "endnote"; text: string }>, options: GrepOptions): GrepResult {
+export function previewGrep(notes: Array<{ index: number; kind: "footnote" | "endnote"; text: string; referenceText?: string }>, options: GrepOptions): GrepResult {
   try {
     const pattern = buildRegExp(options.pattern, options.flags);
     const matches: GrepMatch[] = [];
@@ -69,6 +70,7 @@ export function previewGrep(notes: Array<{ index: number; kind: "footnote" | "en
           noteKind: note.kind,
           originalText: note.text,
           newText,
+          referenceText: note.referenceText,
           matchCount,
         });
         totalMatchCount += matchCount;

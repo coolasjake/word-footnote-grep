@@ -94,6 +94,18 @@ function showControlCharacters(text: string): string {
 }
 
 
+function displayNoteText(
+  text: string,
+  referenceText?: string
+): string {
+  if (referenceText && /^[\u0001-\u001f\u007f]/.test(text)) {
+    return referenceText + text.slice(1);
+  }
+
+  return showControlCharacters(text);
+}
+
+
 /* --------------------------------------------------------------------------
    TAB HANDLING
 -------------------------------------------------------------------------- */
@@ -166,12 +178,12 @@ function renderPreview(
 
           <span class="diff-label">Before</span>
           <div class="diff diff-before">
-            ${escapeHtml(showControlCharacters(m.originalText))}
+            ${escapeHtml(displayNoteText(m.originalText, m.referenceText))}
           </div>
 
           <span class="diff-label">After</span>
           <div class="diff diff-after">
-            ${escapeHtml(showControlCharacters(m.newText))}
+            ${escapeHtml(displayNoteText(m.newText, m.referenceText))}
           </div>
         </article>
       `
