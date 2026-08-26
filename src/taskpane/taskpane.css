@@ -410,7 +410,8 @@ select:focus {
 
 .source-header h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 400;
   word-break: break-word;
 }
 
@@ -435,6 +436,19 @@ select:focus {
   background: var(--bg);
   font-family: Consolas, "Courier New", monospace;
   font-size: 11px;
+}
+
+.group-problem {
+  margin: 8px 0 0;
+  font-size: 11px;
+}
+
+.group-warning {
+  color: #9a6700;
+}
+
+.group-error {
+  color: var(--danger);
 }
 
 .flat-source-card {

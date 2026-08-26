@@ -504,6 +504,15 @@ async function handleFixItalicisedCommas(): Promise<void> {
    SOURCES
 -------------------------------------------------------------------------- */
 
+function normalizeSourceForGrouping(source: string): string {
+  return source
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.;:)])/g, "$1")
+    .replace(/([(:])\s+/g, "$1")
+    .toLocaleLowerCase();
+}
+
 function renderSourceGroups(
   groups: SourceGroup[],
   listId: string
@@ -558,6 +567,11 @@ function renderSourceGroups(
               )
               .join("")}
           </div>
+          ${group.error
+            ? `<p class="group-problem group-error">${escapeHtml(group.error)}</p>`
+            : group.warning
+              ? `<p class="group-problem group-warning">${escapeHtml(group.warning)}</p>`
+              : ""}
         </article>
       `
     )
@@ -620,6 +634,15 @@ function renderSources(
 
   lastSourceReferences = references;
 
+  const groups = mode === "grouped"
+    ? buildSourceGroups(references)
+    : [];
+  const errorCount = groups.filter((group) => group.error).length;
+  const warningCount = groups.filter((group) => group.warning).length;
+  const directReferenceCount = references.filter(
+    (reference) => reference.directReferenceTarget
+  ).length;
+
   const sourceCount = new Set(
     references.map((reference) => reference.normalizedSource)
   ).size;
@@ -630,10 +653,18 @@ function renderSources(
     } from ` +
     `${sourceCount} unique source${
       sourceCount === 1 ? "" : "s"
-    }`;
+    }` +
+    (mode === "grouped" && (errorCount > 0 || warningCount > 0)
+      ? `; ${errorCount} error${errorCount === 1 ? "" : "s"}, ` +
+        `${warningCount} warning${warningCount === 1 ? "" : "s"}`
+      : "") +
+    (mode === "grouped" && directReferenceCount > 0
+      ? `; ${directReferenceCount} direct reference${
+          directReferenceCount === 1 ? "" : "s"
+        }`
+      : "");
 
   if (mode === "grouped") {
-    const groups = buildSourceGroups(references);
     renderSourceGroups(groups, listId);
   } else {
     renderFlatSources(references, listId);
@@ -644,27 +675,117 @@ function renderSources(
 function buildSourceGroups(
   references: SourceReference[]
 ): SourceGroup[] {
-  const groups = new Map<string, SourceGroup>();
+  const groups: SourceGroup[] = [];
+  const directGroups = new Map<string, SourceGroup>();
+  const groupedReferences = new Set<SourceReference>();
+  const targetedSources = new Set<string>();
+  const referencesByNote = new Map<number, SourceReference[]>();
+
+  const sourceKey = (reference: SourceReference): string =>
+    `${reference.noteIndex}:${reference.sourceIndex}`;
+
+  references.forEach((reference) => {
+    const noteReferences = referencesByNote.get(reference.noteIndex) ?? [];
+    noteReferences.push(reference);
+    referencesByNote.set(reference.noteIndex, noteReferences);
+  });
+
+  const addDirectMember = (
+    target: SourceReference,
+    member: SourceReference,
+    warning?: string,
+  ): void => {
+    const groupKey = `${target.noteIndex}:${target.sourceIndex}`;
+    let group = directGroups.get(groupKey);
+
+    if (!group) {
+      group = {
+        source: target.source,
+        normalizedSource: target.normalizedSource,
+        references: [],
+      };
+      directGroups.set(groupKey, group);
+      groups.push(group);
+    }
+
+    if (!group.references.includes(member)) {
+      group.references.push(member);
+    }
+    if (warning) {
+      group.warning = warning;
+    }
+    groupedReferences.add(member);
+  };
 
   for (const reference of references) {
-    const existing = groups.get(reference.normalizedSource);
+    if (reference.directReferenceTarget) {
+      const missing = reference.directReferenceTarget.endsWith(":missing");
 
-    if (existing) {
-      existing.references.push(reference);
-    } else {
-      groups.set(reference.normalizedSource, {
-        source: reference.source,
-        normalizedSource: reference.normalizedSource,
-        references: [reference],
-      });
+      if (missing) {
+        groups.push({
+          source: reference.fullNoteText,
+          normalizedSource: reference.normalizedSource,
+          references: [reference],
+          error: `Error: direct reference (n ${reference.directReferenceTarget.slice(0, -8)}) does not match a footnote number.`,
+        });
+        groupedReferences.add(reference);
+        continue;
+      }
+
+      const target = reference.directReferenceTargetIndex
+        ? referencesByNote.get(reference.directReferenceTargetIndex)?.[0]
+        : undefined;
+
+      if (target) {
+        const targetSources = referencesByNote.get(target.noteIndex) ?? [];
+        const prefix = normalizeSourceForGrouping(
+          reference.directReferencePrefix ?? ""
+        );
+        const matchingSources = targetSources.filter((candidate) =>
+          normalizeSourceForGrouping(candidate.source).includes(prefix)
+        );
+
+        const targetSource = matchingSources.length === 1
+          ? matchingSources[0]
+          : targetSources[targetSources.length - 1];
+        const matchingFailed = matchingSources.length !== 1;
+        const warning = matchingFailed
+          ? "Automatic matching failed."
+          : undefined;
+
+        if (targetSource) {
+          targetedSources.add(sourceKey(targetSource));
+          addDirectMember(targetSource, targetSource, warning);
+          addDirectMember(targetSource, reference, warning);
+        }
+        continue;
+      }
     }
+
+    if (
+      groupedReferences.has(reference)
+    ) {
+      continue;
+    }
+
+    groups.push({
+      source: reference.source,
+      normalizedSource: reference.normalizedSource,
+      references: [reference],
+    });
   }
 
-  return Array.from(groups.values()).sort((a, b) =>
-    a.source.localeCompare(b.source, undefined, {
-      sensitivity: "base",
-    })
-  );
+  return groups
+    .filter(
+      (group) =>
+        group.error ||
+        group.references.length !== 1 ||
+        !targetedSources.has(sourceKey(group.references[0]))
+    )
+    .sort(
+    (a, b) =>
+      a.references[0].noteIndex - b.references[0].noteIndex
+    );
 }
 
 

@@ -30,6 +30,11 @@ export interface SourceReference {
   occurrence: number;
   reference: string;
   source: string;
+  fullNoteText: string;
+  sourceCount: number;
+  directReferenceTarget?: string;
+  directReferenceTargetIndex?: number;
+  directReferencePrefix?: string;
   normalizedSource: string;
 }
 
@@ -38,6 +43,8 @@ export interface SourceGroup {
   source: string;
   normalizedSource: string;
   references: SourceReference[];
+  warning?: string;
+  error?: string;
 }
 
 
@@ -189,6 +196,10 @@ export async function navigateToNote(
   searchText: string,
   occurrence = 1
 ): Promise<void> {
+  const navigationText = searchText.length > 180
+    ? searchText.slice(0, 180).replace(/\s+\S*$/, "")
+    : searchText;
+
   await Word.run(async (context) => {
     const collection = kind === "footnote"
       ? context.document.body.footnotes
@@ -203,7 +214,7 @@ export async function navigateToNote(
       throw new Error(`Could not find ${kind} ${noteIndex}.`);
     }
 
-    const matches = note.body.search(searchText, {
+    const matches = note.body.search(navigationText, {
       matchCase: true,
       matchWholeWord: false,
     });
@@ -662,12 +673,62 @@ function isAutomaticReference(referenceText: string): boolean {
 }
 
 
+function readDirectReference(source: string): {
+  target: string;
+  prefix: string;
+} | undefined {
+  const cleanSource = source
+    .replace(/^[\u0000-\u001f\u007f]+|[\u0000-\u001f\u007f]+$/g, "")
+    .trim();
+  const match = cleanSource.match(/\(n (\d+)\)/);
+
+  if (!match || match.index === undefined) {
+    return undefined;
+  }
+
+  const precedingText = cleanSource.slice(0, match.index);
+  const keywordPattern =
+    /\b(?:quoting|quoted in|citing|cited in|discussing|discussed in)\b/gi;
+  const punctuationIndex = Math.max(
+    precedingText.lastIndexOf(","),
+    precedingText.lastIndexOf("."),
+    precedingText.lastIndexOf(":"),
+    precedingText.lastIndexOf(";"),
+    precedingText.lastIndexOf("!"),
+    precedingText.lastIndexOf("?")
+  );
+  let boundary = punctuationIndex + 1;
+  let keywordMatch: RegExpExecArray | null;
+
+  while ((keywordMatch = keywordPattern.exec(precedingText)) !== null) {
+    boundary = Math.max(
+      boundary,
+      keywordMatch.index + keywordMatch[0].length
+    );
+  }
+
+  const words = precedingText
+    .slice(boundary)
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word.length > 0);
+  const prefix = words.slice(-3).join(" ");
+
+  return {
+    target: match[1],
+    prefix,
+  };
+}
+
+
 export async function getFootnoteSources(): Promise<
   SourceReference[]
 > {
   const notes = await loadAllNotes("footnote", true);
   const references: SourceReference[] = [];
   let automaticNumber = 0;
+
+  const noteLabels = new Map<string, number>();
 
   for (const note of notes) {
     /*
@@ -693,26 +754,51 @@ export async function getFootnoteSources(): Promise<
       reference = String(automaticNumber);
     }
 
-    const occurrences = new Map<string, number>();
+    noteLabels.set(reference, note.index);
 
+    const occurrences = new Map<string, number>();
     sources.forEach((source, index) => {
       const occurrence = (occurrences.get(source) ?? 0) + 1;
       occurrences.set(source, occurrence);
-      const sourceReference =
+      const sourceLabel =
         sources.length > 1
           ? `${reference}(${index + 1})`
           : reference;
+      const directReference = readDirectReference(source);
 
-      references.push({
+      const sourceReference: SourceReference = {
         noteIndex: note.index,
         sourceIndex: index + 1,
         occurrence,
-        reference: sourceReference,
+        reference: sourceLabel,
         source,
+        fullNoteText: removeLeadingNoteMarkers(
+          note.text,
+          note.referenceText
+        ),
+        sourceCount: sources.length,
+        directReferenceTarget: directReference?.target,
+        directReferencePrefix: directReference?.prefix,
         normalizedSource:
           normalizeSource(source),
-      });
+      };
+
+      references.push(sourceReference);
     });
+  }
+
+  for (const sourceReference of references) {
+    const targetLabel = sourceReference.directReferenceTarget;
+
+    if (targetLabel) {
+      const targetIndex = noteLabels.get(targetLabel);
+
+      if (targetIndex) {
+        sourceReference.directReferenceTargetIndex = targetIndex;
+      } else {
+        sourceReference.directReferenceTarget = `${targetLabel}:missing`;
+      }
+    }
   }
 
   return references;
