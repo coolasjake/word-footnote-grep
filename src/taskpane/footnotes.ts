@@ -688,7 +688,7 @@ function readDirectReference(source: string): {
 
   const precedingText = cleanSource.slice(0, match.index);
   const keywordPattern =
-    /\b(?:quoting|quoted in|citing|cited in|discussing|discussed in)\b/gi;
+    /\b(?:quoting|quoted in|citing|cited in|discussing|discussed in|and|see|see, eg|see also|see especially|see generally|cf|but see)\b/gi;
   const punctuationIndex = Math.max(
     precedingText.lastIndexOf(","),
     precedingText.lastIndexOf("."),

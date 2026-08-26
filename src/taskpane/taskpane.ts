@@ -747,7 +747,7 @@ function buildSourceGroups(
 
         const targetSource = matchingSources.length === 1
           ? matchingSources[0]
-          : targetSources[targetSources.length - 1];
+          : targetSources[0];
         const matchingFailed = matchingSources.length !== 1;
         const warning = matchingFailed
           ? "Automatic matching failed."
