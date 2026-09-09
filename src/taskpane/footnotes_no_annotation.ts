@@ -1,4 +1,3 @@
-// Imports the shared grep types and preview helper used by this module.
 import {
   GrepMatch,
   GrepOptions,
@@ -7,7 +6,6 @@ import {
 } from "./grep";
 
 
-// Represents a loaded footnote/endnote and the metadata needed by the UI and source-processing logic.
 export interface LoadedNote {
   index: number;
   kind: "footnote" | "endnote";
@@ -18,7 +16,6 @@ export interface LoadedNote {
 }
 
 
-// Describes an italicised comma found inside a footnote, including enough surrounding text to identify it.
 export interface ItalicisedComma {
   noteIndex: number;
   occurrence: number;
@@ -27,7 +24,6 @@ export interface ItalicisedComma {
 }
 
 
-// Represents one extracted source citation and the metadata used to link, group, and display it.
 export interface SourceReference {
   noteIndex: number;
   sourceIndex: number;
@@ -46,7 +42,6 @@ export interface SourceReference {
 }
 
 
-// Represents a group of source references that normalise to the same source text.
 export interface SourceGroup {
   source: string;
   normalizedSource: string;
@@ -60,7 +55,6 @@ export interface SourceGroup {
    GENERAL NOTE LOADING
 -------------------------------------------------------------------------- */
 
-// Loads footnotes and/or endnotes from Word, optionally including reference and custom-reference metadata.
 async function loadNotes(
   context: Word.RequestContext,
   kind: NoteKind,
@@ -189,7 +183,6 @@ async function loadNotes(
 }
 
 
-// Public wrapper that loads all requested notes through Word.run and returns plain LoadedNote objects.
 export async function loadAllNotes(
   kind: NoteKind,
   includeReferenceMetadata = false
@@ -200,7 +193,6 @@ export async function loadAllNotes(
 }
 
 
-// Selects a specific occurrence of text inside a footnote or endnote and moves Word's selection to it.
 export async function navigateToNote(
   kind: "footnote" | "endnote",
   noteIndex: number,
@@ -250,7 +242,6 @@ export async function navigateToNote(
    EXISTING GREP FUNCTIONALITY
 -------------------------------------------------------------------------- */
 
-// Runs the existing grep preview logic against the requested set of notes without changing the document.
 export async function previewFootnoteGrep(
   options: GrepOptions
 ) {
@@ -260,7 +251,6 @@ export async function previewFootnoteGrep(
 }
 
 
-// Applies one grep match by replacing the complete body text of the matching note.
 async function applyMatch(
   context: Word.RequestContext,
   match: GrepMatch
@@ -283,7 +273,6 @@ async function applyMatch(
 }
 
 
-// Applies a collection of grep matches in one Word.run operation and returns the number applied.
 export async function applyGrepMatches(
   matches: GrepMatch[]
 ): Promise<number> {
@@ -324,7 +313,6 @@ export async function applyGrepMatches(
 }
 
 
-// Previews grep changes first, then applies them only when there is no error and at least one match.
 export async function applyGrepOptions(
   options: GrepOptions
 ): Promise<{
@@ -358,7 +346,6 @@ export async function applyGrepOptions(
    NOTE COUNTS
 -------------------------------------------------------------------------- */
 
-// Returns the current number of footnotes and endnotes in the document.
 export async function getNoteCounts(): Promise<{
   footnotes: number;
   endnotes: number;
@@ -387,7 +374,6 @@ export async function getNoteCounts(): Promise<{
    ITALICISED COMMAS
 -------------------------------------------------------------------------- */
 
-// Builds a short piece of surrounding text for an identified comma, for display in the results list.
 function makeContext(
   text: string,
   commaPosition: number
@@ -421,7 +407,6 @@ function makeContext(
 }
 
 
-// Finds commas in footnotes that are currently italicised and returns their locations and context.
 export async function findItalicisedCommas(): Promise<
   ItalicisedComma[]
 > {
@@ -548,7 +533,6 @@ export async function findItalicisedCommas(): Promise<
 }
 
 
-// Removes italic formatting from every italicised comma in the document and returns the number fixed.
 export async function fixItalicisedCommas(): Promise<number> {
   return Word.run(async (context) => {
     const footnotes =
@@ -641,7 +625,6 @@ export async function fixItalicisedCommas(): Promise<number> {
  * are treated as the same source, while substantially
  * different citations are not automatically merged.
  */
-// Normalises source text conservatively so equivalent spacing/punctuation variants can be grouped.
 function normalizeSource(source: string): string {
   return source
     .trim()
@@ -652,7 +635,6 @@ function normalizeSource(source: string): string {
 }
 
 
-// Removes the leading marker characters Word stores in note text before source extraction.
 function removeLeadingNoteMarkers(
   text: string,
   referenceText: string
@@ -665,7 +647,6 @@ function removeLeadingNoteMarkers(
 }
 
 
-// Reads a custom footnote reference symbol from the note's OOXML, when one is present.
 function readCustomReference(xml: string): string | undefined {
   const marker = xml.match(
     /<w:footnoteRef\b[^>]*w:customMarkFollows="1"[^>]*\/?\s*>/
@@ -690,13 +671,11 @@ function readCustomReference(xml: string): string | undefined {
 }
 
 
-// Determines whether Word's reference text represents an automatically numbered note.
 function isAutomaticReference(referenceText: string): boolean {
   return referenceText.trimStart().charCodeAt(0) === 0x0002;
 }
 
 
-// Splits a note's text into separate source citations using semicolons while avoiding common numeric cases.
 function splitSources(text: string): string[] {
   return text
     .split(/;(?=\s*(?:[^\d\s]|$))/)
@@ -705,7 +684,6 @@ function splitSources(text: string): string[] {
 }
 
 
-// Detects a direct reference such as "(n 12)" and extracts its target note number and descriptive prefix.
 function readDirectReference(source: string): {
   target: string;
   prefix: string;
@@ -754,7 +732,6 @@ function readDirectReference(source: string): {
 }
 
 
-// Detects a short-name declaration at the end of a source citation and returns the declared short name.
 function readShortNameDeclaration(source: string): string | undefined {
   const match = source.match(
     /\(\s*['"\u2018\u201C]\s*(.*?)\s*['"\u2019\u201D]\s*\)\s*[.!?;:]?$/
@@ -764,13 +741,11 @@ function readShortNameDeclaration(source: string): string | undefined {
 }
 
 
-// Checks whether a source citation begins with an Ibid marker.
 function isIbidSource(source: string): boolean {
   return /^ibid\b/i.test(source.trim());
 }
 
 
-// Extracts all source references from the document and resolves their citation metadata.
 export async function getFootnoteSources(): Promise<
   SourceReference[]
 > {

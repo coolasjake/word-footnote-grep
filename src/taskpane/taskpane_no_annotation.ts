@@ -20,8 +20,6 @@ import {
 } from "./footnotes";
 
 
-// Wait for Office.js to finish loading before initializing the task pane.
-// The UI is only initialized when the add-in is running inside Microsoft Word.
 Office.onReady((info) => {
   if (info.host === Office.HostType.Word) {
     initializeUI();
@@ -31,15 +29,11 @@ Office.onReady((info) => {
 });
 
 
-// Stores the most recent search preview so replacements can be applied only after a preview.
 let lastPreview: GrepMatch[] = [];
-// Stores the most recently detected italicised commas for the subsequent fix operation.
 let lastItalicisedCommas: ItalicisedComma[] = [];
-// Stores the most recently loaded source references so the grouped view can be re-sorted without rereading the document.
 let lastSourceReferences: SourceReference[] = [];
 
 
-// Looks up a required DOM element by ID and throws a clear error if it is missing.
 function $(id: string): HTMLElement {
   const el = document.getElementById(id);
 
@@ -62,7 +56,6 @@ function setStatus(
 }
 
 
-// Reads navigation metadata from a result element and asks the Word API to select the corresponding note/location.
 async function handleNavigation(element: HTMLElement): Promise<void> {
   const kind = element.dataset.noteKind;
   const noteIndex = Number(element.dataset.noteIndex);
@@ -99,7 +92,6 @@ async function handleNavigation(element: HTMLElement): Promise<void> {
 }
 
 
-// Installs delegated mouse and keyboard handlers for all dynamically rendered navigable result items.
 function initializeNavigation(): void {
   $("app").addEventListener("click", (event) => {
     const target = event.target;
@@ -133,7 +125,6 @@ function initializeNavigation(): void {
 }
 
 
-// Reads the current search/replace controls from the task pane and converts them into GrepOptions.
 function readOptions(): GrepOptions {
   const flags: GrepFlags = {
     global: ($("flag-global") as HTMLInputElement).checked,
@@ -151,7 +142,6 @@ function readOptions(): GrepOptions {
 }
 
 
-// Escapes text before inserting it into generated HTML, preventing document content from being interpreted as markup.
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
@@ -161,7 +151,6 @@ function escapeHtml(text: string): string {
 }
 
 
-// Makes non-printing control characters visible in the UI using Unicode escape notation.
 function showControlCharacters(text: string): string {
   return Array.from(text, (character) => {
     const codePoint = character.codePointAt(0) ?? 0;
@@ -175,7 +164,6 @@ function showControlCharacters(text: string): string {
 }
 
 
-// Formats note text for display, restoring a reference prefix when Word has returned a leading control character.
 function displayNoteText(
   text: string,
   referenceText?: string
@@ -192,7 +180,6 @@ function displayNoteText(
    TAB HANDLING
 -------------------------------------------------------------------------- */
 
-// Activates one tab and hides the other panels, while keeping the tab ARIA state synchronized.
 function switchTab(
   tabName: "all-footnotes" | "group-sources" | "style-problems"
 ): void {
@@ -227,7 +214,6 @@ function switchTab(
    EXISTING SEARCH / REPLACE
 -------------------------------------------------------------------------- */
 
-// Renders the search/replace preview cards and updates the match summary and Replace button state.
 function renderPreview(
   matches: GrepMatch[],
   totalMatchCount: number
@@ -278,7 +264,6 @@ function renderPreview(
 }
 
 
-// Reads the current footnote/endnote counts from Word and displays them in the task pane.
 async function refreshNoteCounts(): Promise<void> {
   try {
     const counts = await getNoteCounts();
@@ -294,7 +279,6 @@ async function refreshNoteCounts(): Promise<void> {
 }
 
 
-// Validates the search controls, runs the preview scan, and displays its results or errors.
 async function handlePreview(): Promise<void> {
   const options = readOptions();
 
@@ -342,7 +326,6 @@ async function handlePreview(): Promise<void> {
 }
 
 
-// Applies the current search/replace operation using the previously generated preview as the safety check.
 async function handleReplace(): Promise<void> {
   if (lastPreview.length === 0) {
     setStatus("Preview matches first.", "error");
@@ -385,7 +368,6 @@ async function handleReplace(): Promise<void> {
    ITALICISED COMMAS
 -------------------------------------------------------------------------- */
 
-// Renders detected italicised commas and enables/disables the Fix button based on whether any were found.
 function renderItalicisedCommas(
   commas: ItalicisedComma[]
 ): void {
@@ -446,7 +428,6 @@ function renderItalicisedCommas(
 }
 
 
-// Runs the italicised-comma scan and updates the UI with the results.
 async function handleFindItalicisedCommas(): Promise<void> {
   const findButton =
     $("btn-find-commas") as HTMLButtonElement;
@@ -485,7 +466,6 @@ async function handleFindItalicisedCommas(): Promise<void> {
 }
 
 
-// Removes italic formatting from the commas found by the previous scan.
 async function handleFixItalicisedCommas(): Promise<void> {
   if (lastItalicisedCommas.length === 0) {
     setStatus("Find italicised commas first.", "error");
@@ -531,7 +511,6 @@ type GroupSort =
   | "errors";
 
 
-// Reads and validates the selected source-group sort order, falling back to footnote order.
 function getGroupSort(): GroupSort {
   const value = ($("group-sort") as HTMLSelectElement).value;
 
@@ -542,7 +521,6 @@ function getGroupSort(): GroupSort {
     : "footnote";
 }
 
-// Normalizes source text for grouping comparisons by trimming whitespace and punctuation spacing and ignoring case.
 function normalizeSourceForGrouping(source: string): string {
   return source
     .trim()
@@ -552,12 +530,10 @@ function normalizeSourceForGrouping(source: string): string {
     .toLocaleLowerCase();
 }
 
-// Normalizes a declared short source name so it can be compared consistently.
 function normalizeShortName(name: string): string {
   return name.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
-// Finds an earlier short-name declaration that appears to match the supplied source text.
 function findShortNameDeclaration(
   source: string,
   declarations: Map<string, SourceReference>
@@ -579,7 +555,6 @@ function findShortNameDeclaration(
   return undefined;
 }
 
-// Renders grouped sources, applying the requested sort order and showing any grouping warnings/errors.
 function renderSourceGroups(
   groups: SourceGroup[],
   listId: string,
@@ -682,7 +657,6 @@ function renderSourceGroups(
 }
 
 
-// Renders the ungrouped list of source references in document/footnote order.
 function renderFlatSources(
   references: SourceReference[],
   listId: string
@@ -724,7 +698,6 @@ function renderFlatSources(
 }
 
 
-// Chooses the grouped or flat renderer, calculates summary statistics, and stores the loaded references.
 function renderSources(
   references: SourceReference[],
   mode: "grouped" | "flat",
@@ -764,25 +737,16 @@ function renderSources(
 }
 
 
-// Builds logical source groups by resolving direct references, Ibid references, short names, and unresolved references.
-// The function also records warnings/errors so the UI can flag ambiguous or broken relationships.
 function buildSourceGroups(
   references: SourceReference[]
 ): SourceGroup[] {
-  // Final collection of source groups that will eventually be displayed.
   const groups: SourceGroup[] = [];
-  // Maps a target source to the group being built around that source.
   const directGroups = new Map<string, SourceGroup>();
-  // Prevents a reference from being assigned to more than one group.
   const groupedReferences = new Set<SourceReference>();
-  // Tracks source declarations that have been targeted by another reference.
   const targetedSources = new Set<string>();
-  // Indexes source references by footnote number so direct/Ibid references can find their targets quickly.
   const referencesByNote = new Map<number, SourceReference[]>();
-  // Stores declared short names and the source reference where each was declared.
   const shortNameDeclarations = new Map<string, SourceReference>();
 
-  // Produces a stable key for a particular source occurrence within a footnote.
   const sourceKey = (reference: SourceReference): string =>
     `${reference.noteIndex}:${reference.sourceIndex}`;
 
@@ -792,7 +756,6 @@ function buildSourceGroups(
     referencesByNote.set(reference.noteIndex, noteReferences);
   });
 
-  // Adds a reference to a target source group, creating that group when necessary.
   const addDirectMember = (
     target: SourceReference,
     member: SourceReference,
@@ -976,7 +939,6 @@ function buildSourceGroups(
 }
 
 
-// Reads source references from Word and refreshes either the flat or grouped source view.
 async function handleRefreshSources(
   mode: "grouped" | "flat"
 ): Promise<void> {
@@ -1038,7 +1000,6 @@ async function handleRefreshSources(
    INITIALISATION
 -------------------------------------------------------------------------- */
 
-// Wires all task-pane controls to their handlers and performs the initial document count refresh.
 function initializeUI(): void {
   initializeNavigation();
 
