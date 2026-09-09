@@ -1,7 +1,7 @@
 {
   "name": "word-footnote-grep",
   "version": "1.0.0",
-  "description": "Microsoft Word add-in for grep-style search and replace in footnotes",
+  "description": "Microsoft Word add-in for footnote editing",
   "main": "dist/taskpane.js",
   "scripts": {
     "build": "webpack --mode production",
