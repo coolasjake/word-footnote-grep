@@ -38,6 +38,16 @@
         </button>
 
         <button
+          id="tab-group-detector"
+          class="tab"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-group-detector"
+        >
+          Group Detector
+        </button>
+
+        <button
           id="tab-style-problems"
           class="tab"
           role="tab"
@@ -107,6 +117,47 @@
           <section id="group-sources-results" class="results hidden">
             <p id="group-sources-summary" class="summary"></p>
             <div id="group-sources-list" class="source-list"></div>
+          </section>
+        </section>
+
+        <!-- GROUP DETECTOR -->
+        <section
+          id="panel-group-detector"
+          class="tab-panel hidden"
+          role="tabpanel"
+          aria-labelledby="tab-group-detector"
+          hidden
+        >
+          <section class="panel">
+            <h2 class="panel-heading">Possible Source Matches</h2>
+            <p class="panel-description">
+              Find similar sources that are not linked by the citation structure.
+            </p>
+            <fieldset class="view-options detector-filters">
+              <legend>Show:</legend>
+              <label><input id="detector-show-all" name="detector-quality" type="radio" value="all" checked /> All</label>
+              <label><input id="detector-show-likely" name="detector-quality" type="radio" value="likely" /> Likely</label>
+              <label><input id="detector-show-very-likely" name="detector-quality" type="radio" value="very-likely" /> Very Likely</label>
+            </fieldset>
+            <label class="field">
+              <span>Excluded words</span>
+              <input
+                id="detector-excluded-words"
+                type="text"
+                placeholder="e.g. section, chapter"
+                autocomplete="off"
+              />
+            </label>
+            <div class="actions">
+              <button id="btn-refresh-group-detector" class="btn primary">
+                Generate matches
+              </button>
+            </div>
+          </section>
+
+          <section id="group-detector-results" class="results hidden">
+            <p id="group-detector-summary" class="summary"></p>
+            <div id="group-detector-list" class="source-list"></div>
           </section>
         </section>
 

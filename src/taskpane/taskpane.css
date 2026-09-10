@@ -72,7 +72,7 @@ body {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 2px;
   margin-bottom: 12px;
   padding: 3px;
@@ -390,6 +390,94 @@ select:focus {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.detector-filters {
+  display: flex;
+  gap: 12px;
+}
+
+.detector-filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+}
+
+.detector-group {
+  position: relative;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--mono-bg);
+}
+
+.detector-owner {
+  margin: 0 28px 4px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.detector-group-dismiss {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detector-group-dismiss:hover {
+  background: var(--surface);
+  color: var(--danger);
+}
+
+.detector-match {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 28px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.detector-match:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.detector-source {
+  min-width: 0;
+  font-size: 12px;
+  word-break: break-word;
+}
+
+.detector-reference {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--accent);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.detector-quality {
+  align-self: start;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .source-card {

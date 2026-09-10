@@ -12,6 +12,7 @@ import {
   fixItalicisedCommas,
   getNoteCounts,
   getFootnoteSources,
+  keywordPattern,
   navigateToNote,
   previewFootnoteGrep,
   ItalicisedComma,
@@ -37,6 +38,8 @@ let lastPreview: GrepMatch[] = [];
 let lastItalicisedCommas: ItalicisedComma[] = [];
 // Stores the most recently loaded source references so the grouped view can be re-sorted without rereading the document.
 let lastSourceReferences: SourceReference[] = [];
+let lastDetectorMatches: DetectorGroup[] = [];
+const dismissedDetectorGroups = new Set<string>();
 
 
 // Looks up a required DOM element by ID and throws a clear error if it is missing.
@@ -105,6 +108,16 @@ function initializeNavigation(): void {
     const target = event.target;
 
     if (!(target instanceof Element)) {
+      return;
+    }
+
+    const dismissButton = target.closest<HTMLButtonElement>(".detector-group-dismiss");
+    if (dismissButton) {
+      const groupId = dismissButton.dataset.detectorGroup;
+      if (groupId) {
+        dismissedDetectorGroups.add(groupId);
+        renderDetectorMatches();
+      }
       return;
     }
 
@@ -194,7 +207,7 @@ function displayNoteText(
 
 // Activates one tab and hides the other panels, while keeping the tab ARIA state synchronized.
 function switchTab(
-  tabName: "all-footnotes" | "group-sources" | "style-problems"
+  tabName: "all-footnotes" | "group-sources" | "group-detector" | "style-problems"
 ): void {
   const tabs = {
     "all-footnotes": {
@@ -204,6 +217,10 @@ function switchTab(
     "group-sources": {
       button: $("tab-group-sources"),
       panel: $("panel-group-sources"),
+    },
+    "group-detector": {
+      button: $("tab-group-detector"),
+      panel: $("panel-group-detector"),
     },
     "style-problems": {
       button: $("tab-style-problems"),
@@ -529,6 +546,554 @@ type GroupSort =
   | "footnote"
   | "references"
   | "errors";
+
+type DetectorQuality = "all" | "likely" | "very-likely";
+
+interface SourceElement {
+  text: string;
+  originalText: string;
+  words: string[];
+  isKey: boolean;
+  isYear: boolean;
+}
+
+interface DetectorPair {
+  first: SourceReference;
+  second: SourceReference;
+  quality: number;
+  sharesYear: boolean;
+  firstMatch: string;
+  secondMatch: string;
+  ownerText: string;
+  ownerOnFirst: boolean;
+}
+
+interface DetectorEntry {
+  reference: SourceReference;
+  quality: number;
+  matchText?: string;
+}
+
+interface DetectorGroup {
+  id: string;
+  ownerText: string;
+  entries: DetectorEntry[];
+  score: number;
+}
+
+const detectorExcludedWordsStorageKey = "word-footnote-grep.detector-excluded-words";
+const structureWords = new Set(
+  "a an the and or but if then than of to in on at by for from with about as into through during before after above below between under again further once here there when where why how all any both each few more most other some such no nor not only own same so too very can will just don should now i me my mine myself you your yours yourself he him his himself she her hers herself it its itself we us our ours ourselves they them their theirs themselves this that these those is am are was were be been being do does did doing have has had having eg act etc v c s p ibid"
+    .split(" ")
+);
+
+let activeExcludedWords = new Set(structureWords);
+
+function readCustomExcludedWords(): Set<string> {
+  const input = document.getElementById("detector-excluded-words") as HTMLInputElement | null;
+  const enteredWords = input?.value ?? "";
+
+  return new Set(
+    enteredWords
+      .split(/[\s,;]+/u)
+      .map((word) => word.trim().toLocaleLowerCase())
+      .filter((word) => word.length > 0)
+  );
+}
+
+function loadCustomExcludedWords(): void {
+  const input = document.getElementById("detector-excluded-words") as HTMLInputElement | null;
+  if (!input) return;
+
+  try {
+    input.value = localStorage.getItem(detectorExcludedWordsStorageKey) ?? "";
+  } catch {
+    input.value = "";
+  }
+}
+
+function saveCustomExcludedWords(): void {
+  const input = document.getElementById("detector-excluded-words") as HTMLInputElement | null;
+  if (!input) return;
+
+  try {
+    localStorage.setItem(detectorExcludedWordsStorageKey, input.value);
+  } catch {
+    // The detector still works when browser storage is unavailable.
+  }
+}
+
+function normalizeDetectorText(text: string): string {
+  keywordPattern.lastIndex = 0;
+  return text
+    .replace(keywordPattern, " ")
+    .toLocaleLowerCase()
+    .replace(/[^\p{L}\p{N}'\-\u2010\u2011\u2012\u2013\u2014]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function sourceElements(source: string): SourceElement[] {
+  const elements: Array<{
+    text: string;
+    originalText: string;
+    quoted: boolean;
+    isYear: boolean;
+  }> = [];
+  let current = "";
+  let quoted = false;
+  let currentWasQuoted = false;
+
+  const addElement = (text: string, isYear = false): void => {
+    const normalized = normalizeDetectorText(text);
+    if (normalized) {
+      elements.push({
+        text: normalized,
+        originalText: text.trim(),
+        quoted: currentWasQuoted,
+        isYear,
+      });
+    }
+    current = "";
+    currentWasQuoted = false;
+  };
+
+  for (let index = 0; index < source.length; index++) {
+    const year = source.slice(index).match(/^[\[(]\s*(\d{4})\s*[\])]/);
+    if (year) {
+      addElement(year[1], true);
+      index += year[0].length - 1;
+      continue;
+    }
+
+    const character = source[index];
+    const previous = source[index - 1] ?? "";
+    const next = source[index + 1] ?? "";
+    const isApostrophe = character === "'" || character === "\u2019";
+    const isDash = /[-\u2010\u2011\u2012\u2013\u2014]/u.test(character);
+    const isInternalWordPunctuation =
+      (isApostrophe || isDash) &&
+      /[\p{L}\p{N}]/u.test(previous) &&
+      /[\p{L}\p{N}]/u.test(next);
+
+    if (character === '"' || character === "\u2018" || character === "\u2019" ||
+        character === "\u201c" || character === "\u201d" ||
+        (isApostrophe && !isInternalWordPunctuation)) {
+      if (!quoted && current.trim()) {
+        currentWasQuoted = true;
+      }
+      quoted = !quoted;
+      continue;
+    }
+
+    if (/[,.;:!?()[\]{}]/.test(character) ||
+      (isDash && !isInternalWordPunctuation)) {
+      addElement(current);
+      continue;
+    }
+
+    current += character;
+  }
+  addElement(current);
+
+  const firstYearIndex = elements.findIndex((element) => element.isYear);
+  return elements.map((element, index) => {
+    const words = element.text.match(/[\p{L}\p{N}]+/gu) ?? [];
+    const isKey = !element.isYear && (
+      element.quoted ||
+      (index === 0 && words.length <= 5) ||
+      (firstYearIndex >= 2 && index >= firstYearIndex - 2 && index < firstYearIndex)
+    );
+
+    return {
+      text: element.text,
+      originalText: element.originalText,
+      words,
+      isKey,
+      isYear: element.isYear,
+    };
+  });
+}
+
+function usableWords(words: string[]): string[] {
+  return words.filter((word) =>
+    /\p{L}/u.test(word) && !activeExcludedWords.has(word)
+  );
+}
+
+function isMatchableElement(element: SourceElement): boolean {
+  return !element.isYear && usableWords(element.words).length > 0;
+}
+
+function partialElementMatch(
+  key: SourceElement,
+  other: SourceElement
+): string | undefined {
+  const keyWords = usableWords(key.words);
+  const otherTokens = [...other.originalText.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({
+    word: match[0],
+    start: match.index ?? 0,
+    end: (match.index ?? 0) + match[0].length,
+  }));
+  const otherWords = otherTokens.map((token) => token.word);
+  const minimumWords = key.words.length > 1 ? 2 : 1;
+
+  if (keyWords.length < minimumWords) {
+    return undefined;
+  }
+
+  for (let keyIndex = 0; keyIndex <= keyWords.length - minimumWords; keyIndex++) {
+    const wantedWords = keyWords.slice(keyIndex, keyIndex + minimumWords);
+    for (let otherIndex = 0; otherIndex < otherWords.length; otherIndex++) {
+      if (otherWords[otherIndex] !== wantedWords[0]) continue;
+
+      let nextIndex = otherIndex + 1;
+      let wantedIndex = 1;
+      while (wantedIndex < wantedWords.length && nextIndex < otherWords.length) {
+        if (!activeExcludedWords.has(otherWords[nextIndex].toLocaleLowerCase())) {
+          if (otherWords[nextIndex] !== wantedWords[wantedIndex]) break;
+          wantedIndex++;
+        }
+        nextIndex++;
+      }
+
+      if (wantedIndex === wantedWords.length) {
+        return other.originalText.slice(
+          otherTokens[otherIndex].start,
+          otherTokens[nextIndex - 1].end
+        );
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function containsWholeElement(key: SourceElement, other: SourceElement): boolean {
+  return new RegExp(`(?:^|\\s)${key.text.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}(?:$|\\s)`, "u")
+    .test(other.text);
+}
+
+function sourcePairMatch(
+  first: SourceReference,
+  second: SourceReference
+): DetectorPair[] {
+  const firstElements = sourceElements(first.source).filter((element) => !element.isYear);
+  const secondElements = sourceElements(second.source).filter((element) => !element.isYear);
+  const firstYears = sourceElements(first.source).filter((element) => element.isYear).map((element) => element.text);
+  const secondYears = sourceElements(second.source).filter((element) => element.isYear).map((element) => element.text);
+  const sharesYear = firstYears.some((year) => secondYears.includes(year));
+  const matches: DetectorPair[] = [];
+  const seen = new Set<string>();
+  const addMatch = (
+    quality: number,
+    firstMatch: string,
+    secondMatch: string,
+    ownerText: string,
+    ownerOnFirst: boolean
+  ): void => {
+    const key = `${ownerText}|${firstMatch}|${secondMatch}|${quality}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    matches.push({
+      first,
+      second,
+      quality,
+      sharesYear,
+      firstMatch,
+      secondMatch,
+      ownerText,
+      ownerOnFirst,
+    });
+  };
+
+  const compareExactAndWhole = (
+    keys: SourceElement[],
+    others: SourceElement[],
+    keyIsFirst: boolean
+  ): void => {
+    for (const key of keys.filter((element) => element.isKey && isMatchableElement(element))) {
+      for (const other of others.filter(isMatchableElement)) {
+        if (key.text === other.text) {
+          const ownerOnFirst = keyIsFirst && !other.isKey;
+          addMatch(
+            3,
+            keyIsFirst ? key.originalText : other.originalText,
+            keyIsFirst ? other.originalText : key.originalText,
+            key.originalText,
+            ownerOnFirst
+          );
+        } else if (containsWholeElement(key, other)) {
+          const ownerOnFirst = keyIsFirst && !other.isKey;
+          addMatch(2, key.originalText, key.originalText, key.originalText, ownerOnFirst);
+        }
+      }
+    }
+  };
+
+  compareExactAndWhole(firstElements, secondElements, true);
+  compareExactAndWhole(secondElements, firstElements, false);
+
+  const firstYear = firstYears.find((year) =>
+    secondYears.includes(year) || secondElements.some((element) => element.text.includes(year))
+  );
+  const secondYear = secondYears.find((year) =>
+    firstYears.includes(year) || firstElements.some((element) => element.text.includes(year))
+  );
+  const matchedYear = firstYear ?? secondYear;
+  if (matchedYear) {
+    addMatch(1, matchedYear, matchedYear, matchedYear, Boolean(firstYear));
+  }
+
+  const comparePartial = (
+    keys: SourceElement[],
+    others: SourceElement[],
+    keyIsFirst: boolean
+  ): void => {
+    for (const key of keys.filter((element) => element.isKey && isMatchableElement(element))) {
+      for (const other of others.filter(isMatchableElement)) {
+        const match = partialElementMatch(key, other);
+        if (match) {
+          const ownerOnFirst = keyIsFirst && !other.isKey;
+          addMatch(
+            1,
+            keyIsFirst ? key.originalText : match,
+            keyIsFirst ? match : key.originalText,
+            key.originalText,
+            ownerOnFirst
+          );
+        }
+      }
+    }
+  };
+
+  comparePartial(firstElements, secondElements, true);
+  comparePartial(secondElements, firstElements, false);
+
+  return matches;
+}
+
+function detectorGroupKey(references: SourceReference[]): string {
+  return references
+    .map((reference) => `${reference.noteIndex}:${reference.sourceIndex}`)
+    .sort()
+    .join("|");
+}
+
+function buildDetectorMatches(
+  references: SourceReference[],
+  minimumQuality: number
+): DetectorGroup[] {
+  const linkedGroups = buildSourceGroups(references);
+  const groupByReference = new Map<SourceReference, SourceGroup>();
+  linkedGroups.forEach((group) => group.references.forEach((reference) => groupByReference.set(reference, group)));
+  const groupsByOwner = new Map<string, DetectorGroup>();
+
+  const addEntry = (
+    group: DetectorGroup,
+    reference: SourceReference,
+    quality: number,
+    matchText: string
+  ): void => {
+    const existing = group.entries.find((entry) => entry.reference === reference);
+    if (existing) {
+      if (existing.quality < quality) {
+        existing.quality = quality;
+        existing.matchText = matchText;
+      }
+      return;
+    }
+
+    group.entries.push({
+      reference,
+      quality,
+      matchText,
+    });
+  };
+
+  for (let firstIndex = 0; firstIndex < references.length; firstIndex++) {
+    for (let secondIndex = firstIndex + 1; secondIndex < references.length; secondIndex++) {
+      const first = references[firstIndex];
+      const second = references[secondIndex];
+      const firstGroup = groupByReference.get(first);
+      const secondGroup = groupByReference.get(second);
+      if (firstGroup && firstGroup === secondGroup) continue;
+
+      for (const pair of sourcePairMatch(first, second)) {
+        if (pair.quality < minimumQuality) continue;
+        const ownerKey = normalizeDetectorText(pair.ownerText);
+        let group = groupsByOwner.get(ownerKey);
+        if (!group) {
+          group = {
+            id: `${ownerKey}|${first.noteIndex}:${first.sourceIndex}|${second.noteIndex}:${second.sourceIndex}`,
+            ownerText: pair.ownerText,
+            entries: [],
+            score: 0,
+          };
+          groupsByOwner.set(ownerKey, group);
+        }
+
+        const ownerReference = pair.ownerOnFirst ? first : second;
+        const ownerMatch = pair.ownerText;
+        addEntry(
+          group,
+          first,
+          pair.quality,
+          ownerReference === first ? ownerMatch : pair.firstMatch
+        );
+        addEntry(
+          group,
+          second,
+          pair.quality,
+          ownerReference === second ? ownerMatch : pair.secondMatch
+        );
+        group.score = Math.max(
+          group.score,
+          pair.quality * 10 + Number(pair.sharesYear)
+        );
+      }
+    }
+  }
+
+  return [...groupsByOwner.values()]
+    .filter((group) => group.entries.length > 1)
+    .map((group) => {
+      group.id = `${group.ownerText.toLocaleLowerCase()}|${detectorGroupKey(group.entries.map((entry) => entry.reference))}`;
+      return group;
+    })
+    .sort((first, second) => second.score - first.score);
+}
+
+function selectedDetectorQuality(): DetectorQuality {
+  const selected = document.querySelector<HTMLInputElement>(
+    'input[name="detector-quality"]:checked'
+  );
+
+  return (selected?.value as DetectorQuality) ?? "all";
+}
+
+function detectorGroupIsVisible(group: DetectorGroup): boolean {
+  const selected = selectedDetectorQuality();
+  const minimumQuality = selected === "very-likely" ? 3 : selected === "likely" ? 2 : 1;
+  return group.score >= minimumQuality * 10;
+}
+
+function visibleDetectorEntries(group: DetectorGroup): DetectorEntry[] {
+  const selected = selectedDetectorQuality();
+  const minimumQuality = selected === "very-likely" ? 3 : selected === "likely" ? 2 : 1;
+  return group.entries.filter((entry) =>
+    entry.quality >= minimumQuality
+  );
+}
+
+function detectorQualityLabel(quality: number): string {
+  return quality >= 3 ? "Very Likely" : quality === 2 ? "Likely" : "Possible";
+}
+
+function renderMatchedSource(source: string, matchText?: string): string {
+  if (!matchText) return escapeHtml(source);
+  const directIndex = source.toLocaleLowerCase().indexOf(matchText.toLocaleLowerCase());
+  let matchStart = directIndex;
+  let matchEnd = directIndex < 0 ? -1 : directIndex + matchText.length;
+
+  if (matchStart < 0) {
+    const sourceTokens = [...source.matchAll(/[\p{L}\p{N}]+/gu)].map((match) => ({
+      word: match[0].toLocaleLowerCase(),
+      start: match.index ?? 0,
+      end: (match.index ?? 0) + match[0].length,
+    }));
+    const wantedWords = normalizeDetectorText(matchText)
+      .match(/[\p{L}\p{N}]+/gu) ?? [];
+
+    for (let start = 0; start < sourceTokens.length; start++) {
+      let wantedIndex = 0;
+      let tokenIndex = start;
+      while (tokenIndex < sourceTokens.length && wantedIndex < wantedWords.length) {
+        const token = sourceTokens[tokenIndex];
+        if (!activeExcludedWords.has(token.word)) {
+          if (token.word !== wantedWords[wantedIndex]) break;
+          wantedIndex++;
+        }
+        tokenIndex++;
+      }
+
+      if (wantedIndex === wantedWords.length && wantedWords.length > 0) {
+        matchStart = sourceTokens[start].start;
+        matchEnd = sourceTokens[tokenIndex - 1].end;
+        break;
+      }
+    }
+  }
+
+  if (matchStart < 0 || matchEnd < 0) return escapeHtml(source);
+  return escapeHtml(source.slice(0, matchStart)) +
+    `<strong>**${escapeHtml(source.slice(matchStart, matchEnd))}**</strong>` +
+    escapeHtml(source.slice(matchEnd));
+}
+
+function renderDetectorMatches(): void {
+  const results = $("group-detector-results");
+  const list = $("group-detector-list");
+  const visibleGroups = lastDetectorMatches.filter((group) =>
+    !dismissedDetectorGroups.has(group.id) && detectorGroupIsVisible(group)
+  );
+  results.classList.remove("hidden");
+  $("group-detector-summary").textContent =
+    `${visibleGroups.length} possible match group${visibleGroups.length === 1 ? "" : "s"}`;
+
+  if (visibleGroups.length === 0) {
+    list.innerHTML = '<div class="empty-state">No possible source matches found.</div>';
+    return;
+  }
+
+  list.innerHTML = visibleGroups.map((group) => `
+    <article class="detector-group">
+      <button class="detector-group-dismiss" type="button" data-detector-group="${group.id}" aria-label="Dismiss match group">×</button>
+      <h3 class="detector-owner">${renderMatchedSource(group.ownerText)}</h3>
+      ${visibleDetectorEntries(group).map((entry) => `
+        <div class="detector-match">
+          <div
+            class="detector-source navigable"
+            data-note-kind="footnote"
+            data-note-index="${entry.reference.noteIndex}"
+            data-search-text="${escapeHtml(entry.reference.source)}"
+            data-occurrence="${entry.reference.occurrence}"
+            tabindex="0"
+            role="button"
+          >
+            <span class="detector-reference">${escapeHtml(entry.reference.reference)}</span>
+            ${renderMatchedSource(entry.reference.source, entry.matchText)}
+          </div>
+          <span class="detector-quality">${detectorQualityLabel(entry.quality)}</span>
+        </div>
+      `).join("")}
+    </article>
+  `).join("");
+}
+
+async function handleRefreshDetector(): Promise<void> {
+  const button = $("btn-refresh-group-detector") as HTMLButtonElement;
+  button.disabled = true;
+  setStatus("Reading footnotes and finding similar sources…", "info");
+  dismissedDetectorGroups.clear();
+
+  try {
+    saveCustomExcludedWords();
+    activeExcludedWords = new Set([
+      ...structureWords,
+      ...readCustomExcludedWords(),
+    ]);
+    const selected = selectedDetectorQuality();
+    const minimumQuality = selected === "very-likely" ? 3 : selected === "likely" ? 2 : 1;
+    lastDetectorMatches = buildDetectorMatches(await getFootnoteSources(), minimumQuality);
+    renderDetectorMatches();
+    setStatus(`Found ${lastDetectorMatches.length} possible match group${lastDetectorMatches.length === 1 ? "" : "s"}.`, "success");
+  } catch (err) {
+    setStatus(err instanceof Error ? err.message : String(err), "error");
+  } finally {
+    button.disabled = false;
+  }
+}
 
 
 // Reads and validates the selected source-group sort order, falling back to footnote order.
@@ -1041,6 +1606,7 @@ async function handleRefreshSources(
 // Wires all task-pane controls to their handlers and performs the initial document count refresh.
 function initializeUI(): void {
   initializeNavigation();
+  loadCustomExcludedWords();
 
   /* Tabs */
   $("tab-all-footnotes").addEventListener("click", () => {
@@ -1049,6 +1615,10 @@ function initializeUI(): void {
 
   $("tab-group-sources").addEventListener("click", () => {
     switchTab("group-sources");
+  });
+
+  $("tab-group-detector").addEventListener("click", () => {
+    switchTab("group-detector");
   });
 
   $("tab-style-problems").addEventListener("click", () => {
@@ -1074,6 +1644,19 @@ function initializeUI(): void {
   $("btn-refresh-group-sources").addEventListener("click", () => {
     void handleRefreshSources("grouped");
   });
+
+  $("btn-refresh-group-detector").addEventListener("click", () => {
+    void handleRefreshDetector();
+  });
+
+  ["detector-show-all", "detector-show-likely", "detector-show-very-likely"]
+    .forEach((id) => {
+      $(id).addEventListener("change", () => {
+        if (lastDetectorMatches.length > 0) {
+          renderDetectorMatches();
+        }
+      });
+    });
 
   $("group-sort").addEventListener("change", () => {
     if (lastSourceReferences.length > 0) {
