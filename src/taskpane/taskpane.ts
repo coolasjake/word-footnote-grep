@@ -577,9 +577,12 @@ interface DetectorEntry {
 interface DetectorGroup {
   id: string;
   ownerText: string;
+  ownerReference: SourceReference;
   entries: DetectorEntry[];
   score: number;
 }
+
+type GroupSourcesPotentialMode = "none" | "likely" | "all";
 
 const detectorExcludedWordsStorageKey = "word-footnote-grep.detector-excluded-words";
 const structureWords = new Set(
@@ -834,17 +837,6 @@ function sourcePairMatch(
   compareExactAndWhole(firstElements, secondElements, true);
   compareExactAndWhole(secondElements, firstElements, false);
 
-  const firstYear = firstYears.find((year) =>
-    secondYears.includes(year) || secondElements.some((element) => element.text.includes(year))
-  );
-  const secondYear = secondYears.find((year) =>
-    firstYears.includes(year) || firstElements.some((element) => element.text.includes(year))
-  );
-  const matchedYear = firstYear ?? secondYear;
-  if (matchedYear) {
-    addMatch(1, matchedYear, matchedYear, matchedYear, Boolean(firstYear));
-  }
-
   const comparePartial = (
     keys: SourceElement[],
     others: SourceElement[],
@@ -921,19 +913,20 @@ function buildDetectorMatches(
 
       for (const pair of sourcePairMatch(first, second)) {
         if (pair.quality < minimumQuality) continue;
+        const ownerReference = pair.ownerOnFirst ? first : second;
         const ownerKey = normalizeDetectorText(pair.ownerText);
         let group = groupsByOwner.get(ownerKey);
         if (!group) {
           group = {
             id: `${ownerKey}|${first.noteIndex}:${first.sourceIndex}|${second.noteIndex}:${second.sourceIndex}`,
             ownerText: pair.ownerText,
+            ownerReference: ownerReference,
             entries: [],
             score: 0,
           };
           groupsByOwner.set(ownerKey, group);
         }
 
-        const ownerReference = pair.ownerOnFirst ? first : second;
         const ownerMatch = pair.ownerText;
         addEntry(
           group,
@@ -970,6 +963,15 @@ function selectedDetectorQuality(): DetectorQuality {
   );
 
   return (selected?.value as DetectorQuality) ?? "all";
+}
+
+function getGroupSourcesPotentialMode(): GroupSourcesPotentialMode {
+  const selected = document.querySelector<HTMLInputElement>(
+    'input[name="group-sources-potential"]:checked'
+  );
+
+  const value = selected?.value;
+  return value === "likely" || value === "all" ? value : "none";
 }
 
 function detectorGroupIsVisible(group: DetectorGroup): boolean {
@@ -1145,14 +1147,176 @@ function findShortNameDeclaration(
 }
 
 // Renders grouped sources, applying the requested sort order and showing any grouping warnings/errors.
+interface PotentialDisplayEntry {
+  reference: SourceReference;
+  quality: number;
+}
+
+interface PotentialDisplayGroup {
+  source: string;
+  headingReference: SourceReference;
+  confirmedReferences: SourceReference[];
+  potentialEntries: PotentialDisplayEntry[];
+  problem?: string;
+}
+
+function referenceKey(reference: SourceReference): string {
+  return `${reference.noteIndex}:${reference.sourceIndex}`;
+}
+
+function potentialEntriesForGroup(
+  group: SourceGroup,
+  detectorGroups: DetectorGroup[]
+): PotentialDisplayEntry[] {
+  const confirmedKeys = new Set(group.references.map(referenceKey));
+  const entries = new Map<string, PotentialDisplayEntry>();
+
+  detectorGroups
+    .filter((detectorGroup) =>
+      group.references.some((reference) => reference === detectorGroup.ownerReference)
+    )
+    .forEach((detectorGroup) => {
+      detectorGroup.entries.forEach((entry) => {
+        const key = referenceKey(entry.reference);
+        if (confirmedKeys.has(key)) return;
+        const existing = entries.get(key);
+        if (!existing || existing.quality < entry.quality) {
+          entries.set(key, {
+            reference: entry.reference,
+            quality: entry.quality,
+          });
+        }
+      });
+    });
+
+  return [...entries.values()].sort((first, second) =>
+    first.reference.noteIndex - second.reference.noteIndex ||
+    first.reference.sourceIndex - second.reference.sourceIndex
+  );
+}
+
+function potentialEntriesForProblemGroup(
+  group: SourceGroup,
+  detectorGroups: DetectorGroup[]
+): PotentialDisplayEntry[] {
+  const entries = new Map<string, PotentialDisplayEntry>();
+
+  (group.problemReferences ?? []).forEach((reference) => {
+    entries.set(referenceKey(reference), { reference, quality: 1 });
+  });
+
+  potentialEntriesForGroup(group, detectorGroups).forEach((entry) => {
+    const key = referenceKey(entry.reference);
+    const existing = entries.get(key);
+    if (!existing || existing.quality < entry.quality) {
+      entries.set(key, entry);
+    }
+  });
+
+  return [...entries.values()].sort((first, second) =>
+    first.reference.noteIndex - second.reference.noteIndex ||
+    first.reference.sourceIndex - second.reference.sourceIndex
+  );
+}
+
+function renderSourceReferenceRow(
+  references: SourceReference[],
+  className = "source-references"
+): string {
+  if (references.length === 0) return "";
+  return `
+    <div class="${className}">
+      ${references.map((reference) => `
+        <span
+          class="source-reference navigable"
+          data-note-kind="footnote"
+          data-note-index="${reference.noteIndex}"
+          data-search-text="${escapeHtml(reference.source)}"
+          data-occurrence="${reference.occurrence}"
+          tabindex="0"
+          role="button"
+        >
+          ${escapeHtml(reference.reference)}
+        </span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderPotentialReferenceRow(
+  entries: PotentialDisplayEntry[],
+  problem?: string
+): string {
+  if (entries.length === 0 && !problem) return "";
+  return `
+    <div class="potential-references">
+      <span class="potential-label">Check:</span>
+      ${entries.map((entry) => `
+        <span
+          class="source-reference potential-reference potential-${detectorQualityLabel(entry.quality).toLocaleLowerCase().replace(/\s+/g, "-")} navigable"
+          data-note-kind="footnote"
+          data-note-index="${entry.reference.noteIndex}"
+          data-search-text="${escapeHtml(entry.reference.source)}"
+          data-occurrence="${entry.reference.occurrence}"
+          title="${detectorQualityLabel(entry.quality)} potential match"
+          tabindex="0"
+          role="button"
+        >
+          ${escapeHtml(entry.reference.reference)}
+        </span>
+      `).join("")}
+      ${problem ? `<span class="potential-problem">${escapeHtml(problem)}</span>` : ""}
+    </div>
+  `;
+}
+
+function renderSourceGroupCard(group: PotentialDisplayGroup): string {
+  return `
+    <article class="source-card">
+      <div class="source-header">
+        <h3
+          class="navigable"
+          data-note-kind="footnote"
+          data-note-index="${group.headingReference.noteIndex}"
+          data-search-text="${escapeHtml(group.source)}"
+          data-occurrence="${group.headingReference.occurrence}"
+          tabindex="0"
+          role="button"
+        >${escapeHtml(group.source)}</h3>
+        <span class="source-count">
+          ${group.confirmedReferences.length}
+          confirmed reference${group.confirmedReferences.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      ${renderSourceReferenceRow(group.confirmedReferences)}
+      ${renderPotentialReferenceRow(group.potentialEntries, group.problem)}
+    </article>
+  `;
+}
+
 function renderSourceGroups(
   groups: SourceGroup[],
   listId: string,
-  sort: GroupSort
+  sort: GroupSort,
+  detectorGroups: DetectorGroup[] = []
 ): void {
   const list = $(listId);
 
-  if (groups.length === 0) {
+  const displayGroups: PotentialDisplayGroup[] = groups
+    .filter((group) => group.references.length >= 2)
+    .map((group) => ({
+    source: group.source,
+    headingReference: group.references[0],
+    confirmedReferences: group.references.filter((reference) =>
+      !(group.problemReferences ?? []).includes(reference)
+    ),
+    potentialEntries: group.error || group.warning
+      ? potentialEntriesForProblemGroup(group, detectorGroups)
+      : potentialEntriesForGroup(group, detectorGroups),
+    problem: group.error,
+    }));
+
+  if (displayGroups.length === 0) {
     list.innerHTML = `
       <div class="empty-state">
         No footnote sources found.
@@ -1161,11 +1325,10 @@ function renderSourceGroups(
     return;
   }
 
-  const orderedGroups = [...groups].sort((a, b) => {
+  const orderedGroups = [...displayGroups].sort((a, b) => {
     if (sort === "errors") {
       const problemOrder =
-        (Number(Boolean(b.error)) * 2 + Number(Boolean(b.warning))) -
-        (Number(Boolean(a.error)) * 2 + Number(Boolean(a.warning)));
+        Number(Boolean(b.problem)) - Number(Boolean(a.problem));
 
       if (problemOrder !== 0) {
         return problemOrder;
@@ -1186,64 +1349,17 @@ function renderSourceGroups(
 
     if (sort === "references") {
       const referenceOrder =
-        b.references.length - a.references.length;
+        b.confirmedReferences.length - a.confirmedReferences.length;
 
       if (referenceOrder !== 0) {
         return referenceOrder;
       }
     }
 
-    return a.references[0].noteIndex - b.references[0].noteIndex;
+    return a.headingReference.noteIndex - b.headingReference.noteIndex;
   });
 
-  list.innerHTML = orderedGroups
-    .map(
-      (group) => `
-        <article class="source-card">
-          <div class="source-header">
-            <h3
-              class="navigable"
-              data-note-kind="footnote"
-              data-note-index="${group.references[0].noteIndex}"
-              data-search-text="${escapeHtml(group.source)}"
-              data-occurrence="${group.references[0].occurrence}"
-              tabindex="0"
-              role="button"
-            >${escapeHtml(group.source)}</h3>
-            <span class="source-count">
-              ${group.references.length}
-              reference${group.references.length === 1 ? "" : "s"}
-            </span>
-          </div>
-
-          <div class="source-references">
-            ${group.references
-              .map(
-                (reference) => `
-                  <span
-                    class="source-reference navigable"
-                    data-note-kind="footnote"
-                    data-note-index="${reference.noteIndex}"
-                    data-search-text="${escapeHtml(reference.source)}"
-                    data-occurrence="${reference.occurrence}"
-                    tabindex="0"
-                    role="button"
-                  >
-                    ${escapeHtml(reference.reference)}
-                  </span>
-                `
-              )
-              .join("")}
-          </div>
-          ${group.error
-            ? `<p class="group-problem group-error">${escapeHtml(group.error)}</p>`
-            : group.warning
-              ? `<p class="group-problem group-warning">${escapeHtml(group.warning)}</p>`
-              : ""}
-        </article>
-      `
-    )
-    .join("");
+  list.innerHTML = orderedGroups.map(renderSourceGroupCard).join("");
 }
 
 
@@ -1307,14 +1423,32 @@ function renderSources(
   const groups = mode === "grouped"
     ? buildSourceGroups(references)
     : [];
+  const potentialMode = mode === "grouped"
+    ? getGroupSourcesPotentialMode()
+    : "none";
+  let detectorGroups: DetectorGroup[] = [];
+
+  if (mode === "grouped" && potentialMode !== "none") {
+    activeExcludedWords = new Set([
+      ...structureWords,
+      ...readCustomExcludedWords(),
+    ]);
+    detectorGroups = buildDetectorMatches(
+      references,
+      potentialMode === "likely" ? 2 : 1
+    );
+  }
   const errorCount = groups.filter((group) => group.error).length;
   const warningCount = groups.filter((group) => group.warning).length;
+  const displayedGroupCount = groups.filter(
+    (group) => group.references.length >= 2
+  ).length;
   const footnoteCount = new Set(
     references.map((reference) => reference.noteIndex)
   ).size;
 
   summary.textContent = mode === "grouped"
-    ? `${groups.length} source${groups.length === 1 ? "" : "s"}, ` +
+    ? `${displayedGroupCount} source${displayedGroupCount === 1 ? "" : "s"}, ` +
       `${footnoteCount} footnote${footnoteCount === 1 ? "" : "s"}, ` +
       `${errorCount} error${errorCount === 1 ? "" : "s"}, ` +
       `${warningCount} warning${warningCount === 1 ? "" : "s"}`
@@ -1322,7 +1456,7 @@ function renderSources(
       `${footnoteCount} footnote${footnoteCount === 1 ? "" : "s"}`;
 
   if (mode === "grouped") {
-    renderSourceGroups(groups, listId, getGroupSort());
+    renderSourceGroups(groups, listId, getGroupSort(), detectorGroups);
   } else {
     renderFlatSources(references, listId);
   }
@@ -1381,6 +1515,20 @@ function buildSourceGroups(
     }
     if (warning) {
       group.warning = warning;
+      group.problemReferences = group.problemReferences ?? [];
+      if (!group.problemReferences.includes(member)) {
+        group.problemReferences.push(member);
+      }
+    }
+    groupedReferences.add(member);
+  };
+
+  const addMemberToExistingGroup = (
+    group: SourceGroup,
+    member: SourceReference
+  ): void => {
+    if (!group.references.includes(member)) {
+      group.references.push(member);
     }
     groupedReferences.add(member);
   };
@@ -1403,6 +1551,15 @@ function buildSourceGroups(
         ? referencesByNote.get(reference.ibidTargetNoteIndex)?.[0]
         : undefined;
 
+      const existingTargetGroup = target
+        ? groups.find((group) => group.references.includes(target))
+        : undefined;
+
+      if (existingTargetGroup) {
+        addMemberToExistingGroup(existingTargetGroup, reference);
+        continue;
+      }
+
       if (
         target &&
         !target.directReferenceTarget?.endsWith(":missing")
@@ -1411,13 +1568,14 @@ function buildSourceGroups(
           ? "Warning: Ibid refers to a footnote containing multiple sources."
           : undefined;
         targetedSources.add(sourceKey(target));
-        addDirectMember(target, target, warning);
+        addDirectMember(target, target);
         addDirectMember(target, reference, warning);
       } else {
         groups.push({
           source: reference.source,
           normalizedSource: reference.normalizedSource,
           references: [reference],
+          problemReferences: [reference],
           warning: "Warning: Ibid follows an unresolved footnote.",
         });
         groupedReferences.add(reference);
@@ -1439,13 +1597,12 @@ function buildSourceGroups(
           targetedSources.add(sourceKey(shortNameDeclaration));
           addDirectMember(
             shortNameDeclaration,
-            shortNameDeclaration,
-            `Mismatched short name found in footnote ${reference.directReferenceTarget.slice(0, -8)}.`
+            shortNameDeclaration
           );
           addDirectMember(
             shortNameDeclaration,
             reference,
-            `Mismatched short name found in footnote ${reference.directReferenceTarget.slice(0, -8)}.`
+            `Mismatched short name found in footnote ${reference.reference}.`
           );
           continue;
         }
@@ -1454,6 +1611,7 @@ function buildSourceGroups(
           source: reference.fullNoteText,
           normalizedSource: reference.normalizedSource,
           references: [reference],
+          problemReferences: [reference],
           error: `Error: direct reference (n ${reference.directReferenceTarget.slice(0, -8)}) does not match a footnote number.`,
         });
         groupedReferences.add(reference);
@@ -1493,7 +1651,7 @@ function buildSourceGroups(
 
         if (targetSource) {
           targetedSources.add(sourceKey(targetSource));
-          addDirectMember(targetSource, targetSource, warning);
+          addDirectMember(targetSource, targetSource);
           addDirectMember(targetSource, reference, warning);
         }
         continue;
@@ -1507,8 +1665,8 @@ function buildSourceGroups(
     if (shortNameDeclaration) {
       targetedSources.add(sourceKey(shortNameDeclaration));
       const warning =
-        `Mismatched short name found in footnote ${reference.noteIndex}.`;
-      addDirectMember(shortNameDeclaration, shortNameDeclaration, warning);
+        `Mismatched short name found in footnote ${reference.reference}.`;
+      addDirectMember(shortNameDeclaration, shortNameDeclaration);
       addDirectMember(shortNameDeclaration, reference, warning);
       continue;
     }
@@ -1527,7 +1685,39 @@ function buildSourceGroups(
     }
   }
 
-  return groups
+  const mergedGroups: SourceGroup[] = [];
+  for (const group of groups) {
+    let mergedGroup = mergedGroups.find((candidate) =>
+      candidate.references.some((reference) => group.references.includes(reference))
+    );
+
+    if (!mergedGroup) {
+      mergedGroups.push({
+        ...group,
+        references: [...group.references],
+        problemReferences: group.problemReferences
+          ? [...group.problemReferences]
+          : undefined,
+      });
+      continue;
+    }
+
+    for (const reference of group.references) {
+      if (!mergedGroup.references.includes(reference)) {
+        mergedGroup.references.push(reference);
+      }
+    }
+    for (const reference of group.problemReferences ?? []) {
+      mergedGroup.problemReferences = mergedGroup.problemReferences ?? [];
+      if (!mergedGroup.problemReferences.includes(reference)) {
+        mergedGroup.problemReferences.push(reference);
+      }
+    }
+    mergedGroup.warning = mergedGroup.warning ?? group.warning;
+    mergedGroup.error = mergedGroup.error ?? group.error;
+  }
+
+  return mergedGroups
     .filter(
       (group) =>
         group.error ||
@@ -1669,6 +1859,21 @@ function initializeUI(): void {
       );
     }
   });
+
+  ["group-sources-potential-none", "group-sources-potential-likely", "group-sources-potential-all"]
+    .forEach((id) => {
+      $(id).addEventListener("change", () => {
+        if (lastSourceReferences.length > 0) {
+          renderSources(
+            lastSourceReferences,
+            "grouped",
+            "group-sources-results",
+            "group-sources-summary",
+            "group-sources-list"
+          );
+        }
+      });
+    });
 
 
   void refreshNoteCounts();

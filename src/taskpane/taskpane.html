@@ -107,6 +107,12 @@
                 <option value="errors">Errors first</option>
               </select>
             </label>
+            <fieldset class="view-options detector-filters">
+              <legend>Include potential matches</legend>
+              <label><input id="group-sources-potential-none" name="group-sources-potential" type="radio" value="none" checked /> None</label>
+              <label><input id="group-sources-potential-likely" name="group-sources-potential" type="radio" value="likely" /> Likely</label>
+              <label><input id="group-sources-potential-all" name="group-sources-potential" type="radio" value="all" /> All</label>
+            </fieldset>
             <div class="actions">
               <button id="btn-refresh-group-sources" class="btn primary">
                 Refresh

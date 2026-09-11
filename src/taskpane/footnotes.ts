@@ -51,6 +51,7 @@ export interface SourceGroup {
   source: string;
   normalizedSource: string;
   references: SourceReference[];
+  problemReferences?: SourceReference[];
   warning?: string;
   error?: string;
 }
